@@ -1,0 +1,45 @@
+name: Deploy Production
+
+# Deliberately not automatic on every push/tag — D1 has no easy
+# point-in-time rollback and this data is prize/recognition-adjacent, so
+# production deploys require an explicit human trigger.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or ref to deploy"
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Apply D1 migrations
+        run: pnpm exec wrangler d1 migrations apply spectrum-sweeps-db-production --env production --remote
+        working-directory: apps/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Build and deploy
+        run: |
+          pnpm run build
+          pnpm exec wrangler deploy --env production
+        working-directory: apps/worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

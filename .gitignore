@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.wrangler/
+.dev.vars
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+coverage/
+.turbo/
+packages/db/seed/seed.sql
+.react-router/
+worker-configuration.d.ts

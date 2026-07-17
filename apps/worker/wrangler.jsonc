@@ -1,0 +1,44 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "spectrum-sweeps",
+  "main": "./workers/app.ts",
+  "compatibility_date": "2026-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./build/client"
+  },
+  // Replace database_id after running:
+  //   wrangler d1 create spectrum-sweeps-db
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "spectrum-sweeps-db",
+      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "migrations_dir": "../../packages/db/migrations"
+    }
+  ],
+  "env": {
+    "staging": {
+      "name": "spectrum-sweeps-staging",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "spectrum-sweeps-db-staging",
+          "database_id": "REPLACE_WITH_STAGING_D1_DATABASE_ID",
+          "migrations_dir": "../../packages/db/migrations"
+        }
+      ]
+    },
+    "production": {
+      "name": "spectrum-sweeps-production",
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "spectrum-sweeps-db-production",
+          "database_id": "REPLACE_WITH_PRODUCTION_D1_DATABASE_ID",
+          "migrations_dir": "../../packages/db/migrations"
+        }
+      ]
+    }
+  }
+}
