@@ -54,6 +54,11 @@ jobs:
         # on refresh unless a 404.html mirrors index.html.
         run: cp apps/worker/build/client/index.html apps/worker/build/client/404.html
 
+      - name: Custom domain (CNAME)
+        # Actions-based Pages deploys publish only the artifact, so the root
+        # CNAME must be copied into it for the custom domain to persist.
+        run: cp CNAME apps/worker/build/client/CNAME
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/worker/build/client
