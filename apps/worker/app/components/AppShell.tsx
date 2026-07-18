@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from "react-router";
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { BrandWordmark } from "./Brand";
 import { useAuth } from "../auth";
 
@@ -109,21 +109,63 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </aside>
 
-      {/* Mobile top bar */}
-      <div className="lg:hidden">
-        <div className="flex items-center justify-between border-b border-border bg-surface/60 px-4 py-3">
-          <NavLink to="/"><BrandWordmark compact /></NavLink>
-          <nav className="flex gap-1 text-sm">
-            <NavLink to="/" end className={({ isActive }) => `rounded px-2 py-1 ${isActive ? "text-brand" : "text-muted"}`}>Leagues</NavLink>
-            <NavLink to="/admin" className={({ isActive }) => `rounded px-2 py-1 ${isActive ? "text-brand" : "text-muted"}`}>Admin</NavLink>
-          </nav>
-        </div>
-      </div>
+      {/* Mobile top bar + drawer */}
+      <MobileNav />
 
       {/* Content */}
       <main key={location.pathname} className="spectrum-glow min-h-screen">
         {children}
       </main>
+    </div>
+  );
+}
+
+function MobileNav() {
+  const [open, setOpen] = useState(false);
+  const location = useLocation();
+  const { user, logout } = useAuth();
+
+  // Close the drawer whenever the route changes.
+  useEffect(() => setOpen(false), [location.pathname]);
+
+  return (
+    <div className="lg:hidden">
+      <div className="flex items-center justify-between border-b border-border bg-surface/80 px-4 py-3">
+        <NavLink to="/"><BrandWordmark compact /></NavLink>
+        <button
+          onClick={() => setOpen((v) => !v)}
+          aria-label="Menu"
+          aria-expanded={open}
+          className="grid h-9 w-9 place-items-center rounded-lg border border-border text-ink"
+        >
+          {open ? (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+          ) : (
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 6h18M3 12h18M3 18h18" /></svg>
+          )}
+        </button>
+      </div>
+
+      {open && (
+        <nav className="border-b border-border bg-surface px-3 py-3">
+          <NavItem to="/" icon={<IconTrophy />} label="Leagues" />
+          <SoonItem icon={<IconWheel />} label="Spin Wheel" />
+          <SoonItem icon={<IconPoll />} label="Polls" />
+          <NavItem to="/admin" icon={<IconShield />} label="Admin" />
+          <div className="mt-2 border-t border-border pt-3">
+            {user ? (
+              <div className="flex items-center justify-between px-1">
+                <span className="text-sm text-muted">{user.nickname} · L{user.level}</span>
+                <button onClick={() => logout()} className="text-sm text-brand">Log out</button>
+              </div>
+            ) : (
+              <NavLink to="/login" className="block rounded-lg bg-brand px-3 py-2 text-center text-sm font-medium text-white">
+                Log in / Register
+              </NavLink>
+            )}
+          </div>
+        </nav>
+      )}
     </div>
   );
 }

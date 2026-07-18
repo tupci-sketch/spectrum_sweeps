@@ -2,7 +2,11 @@
 // (no native bcrypt/argon2). Format: pbkdf2$<iterations>$<saltB64>$<hashB64>.
 // 210k iterations per OWASP guidance for PBKDF2-HMAC-SHA256.
 
-const ITERATIONS = 210_000;
+// Cloudflare Workers caps PBKDF2 at 100k iterations (higher throws at runtime).
+// That's the platform ceiling; combined with a 128-bit random salt it's ample
+// for an internal tool. verifyPassword reads the iteration count from the stored
+// hash, so this can be raised later if the runtime cap changes.
+const ITERATIONS = 100_000;
 const KEYLEN = 32;
 
 function b64(bytes: Uint8Array): string {

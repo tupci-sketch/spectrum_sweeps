@@ -14,7 +14,16 @@ import { resultsApi } from "./results";
 import { leaderboardApi } from "./leaderboard";
 import { withUser, requireLevel } from "../auth/middleware";
 
-export const api = new Hono<AppEnv>()
+const app = new Hono<AppEnv>();
+
+// Surface the real cause of 500s (logged to the tail) and return a short
+// message to the client instead of a bare "Internal Server Error".
+app.onError((err, c) => {
+  console.error("API error:", err instanceof Error ? `${err.name}: ${err.message}` : String(err));
+  return c.json({ error: "server error", detail: err instanceof Error ? err.message : String(err) }, 500);
+});
+
+export const api = app
   .basePath("/api")
   // Static frontend calls cross-origin with a Bearer token (no cookies), so the
   // Authorization header must be allowed. Origin is reflected (specific, not *).
