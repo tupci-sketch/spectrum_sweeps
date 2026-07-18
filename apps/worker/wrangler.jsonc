@@ -10,6 +10,9 @@
   // reachable in the meantime.
   "workers_dev": true,
   "routes": [{ "pattern": "api.spectrum-sweeps.co.uk", "custom_domain": true }],
+  // Cron poller: syncs FPL-sourced catalog leagues every 6 hours. A no-op until
+  // FPL publishes 2026/27, then pulls real fixtures pre-season + live results.
+  "triggers": { "crons": ["0 */6 * * *"] },
   // Single environment for now. Separate staging/production Wrangler
   // environments (each with its own D1 database) are a later addition per the
   // plan doc, once there's real usage to protect.

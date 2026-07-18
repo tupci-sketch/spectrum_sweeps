@@ -1,6 +1,7 @@
 export * from "./users";
 export * from "./auth";
 export * from "./office-groups";
+export * from "./catalog";
 export * from "./leagues";
 export * from "./sports";
 export * from "./competitions";

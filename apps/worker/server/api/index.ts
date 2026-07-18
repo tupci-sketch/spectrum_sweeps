@@ -11,6 +11,7 @@ import { competitionsApi } from "./competitions";
 import { participantsApi } from "./participants";
 import { drawApi } from "./draw";
 import { drawLiveApi } from "./draw-live";
+import { catalogApi } from "./catalog";
 import { resultsApi } from "./results";
 import { leaderboardApi } from "./leaderboard";
 import { withUser, requireLevel } from "../auth/middleware";
@@ -60,6 +61,8 @@ export const api = app
   // Live draw: GET /draw/:id/state is public; POST start/spin/schedule self-gate
   // on level (L7 to spin, L5 to schedule).
   .route("/draw", drawLiveApi)
+  // Catalog: GET public (selectable leagues + live table); POST /:id/sync L5.
+  .route("/catalog", catalogApi)
   .route("/leaderboard", leaderboardApi);
 
 export type ApiType = typeof api;
