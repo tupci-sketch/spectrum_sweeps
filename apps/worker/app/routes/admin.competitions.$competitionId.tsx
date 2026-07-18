@@ -4,7 +4,7 @@ import type { Route } from "./+types/admin.competitions.$competitionId";
 import { apiGet, apiPatch, apiPost } from "../api-client";
 import { Button, Card, ErrorText, Field, Select, useSubmit } from "../admin-ui";
 
-interface Competition { id: string; name: string; formatType: string; status: string; targetEntryCount: number; joinCode: string; }
+interface Competition { id: string; name: string; formatType: string; status: string; targetEntryCount: number; joinCode: string; drawState: string; drawScheduledAt: number | null; }
 interface Participant { id: string; userId: string; paid: boolean; entryStatus: string; }
 interface User { id: string; nickname: string; email: string; role: string; }
 interface Entry { id: string; teamOrDriverLabel: string; isDrawn: boolean; drawPotId: string; }
@@ -223,34 +223,61 @@ function DrawCard({
   drawn: boolean;
 }) {
   const { run, error, busy } = useSubmit();
+  const [when, setWhen] = useState("");
   const enoughEntries = availableEntries >= participantCount && participantCount > 0;
-  const canDraw = !drawn && full && enoughEntries && !!actor;
+  const ready = full && enoughEntries && !!actor;
+  const ds = competition.drawState;
 
   return (
-    <Card title="Run the draw">
-      {drawn ? (
-        <p className="text-sm text-emerald-400">Draw completed. Assignments are locked below.</p>
+    <Card title="The draw">
+      {drawn || ds === "completed" ? (
+        <p className="text-sm text-emerald-400">
+          Draw completed. <Link to={`/draw/${competition.id}`} className="text-brand hover:underline">Open draw room →</Link>
+        </p>
+      ) : ds === "scheduled" || ds === "live" ? (
+        <div className="text-sm">
+          <p className="text-muted">
+            {ds === "live" ? "Draw is live now." : "Scheduled for "}
+            {ds === "scheduled" && competition.drawScheduledAt && (
+              <span className="text-gold">{new Date(competition.drawScheduledAt).toLocaleString()}</span>
+            )}
+          </p>
+          <Link to={`/draw/${competition.id}`} className="mt-2 inline-block rounded-lg bg-brand px-4 py-2 font-medium text-white hover:bg-brand-hi">
+            Open draw room →
+          </Link>
+          <p className="mt-2 text-xs text-muted">Everyone entered opens this room; an owner (L7) runs the spin live.</p>
+        </div>
       ) : (
         <>
-          <p className="text-sm text-slate-400">
-            The draw randomly assigns each participant a team/driver. It runs only when the field is full.
+          <p className="text-sm text-muted">
+            Schedule the draw for a date/time. Entrants gather in the draw room and an owner reveals each pick live.
           </p>
           <ul className="mt-2 text-sm">
-            <li className={full ? "text-emerald-400" : "text-slate-400"}>
+            <li className={full ? "text-emerald-400" : "text-muted"}>
               {full ? "✓" : "•"} Participants: {participantCount}/{competition.targetEntryCount}
             </li>
-            <li className={enoughEntries ? "text-emerald-400" : "text-slate-400"}>
+            <li className={enoughEntries ? "text-emerald-400" : "text-muted"}>
               {enoughEntries ? "✓" : "•"} Teams/drivers available: {availableEntries} (need ≥ {participantCount})
             </li>
           </ul>
-          <div className="mt-3">
-            <Button
-              disabled={!canDraw || busy}
-              onClick={() => run(() => apiPost(`/api/admin/draw/run`, { competitionId: competition.id, drawnBy: actor!.id }))}
+          {ready && (
+            <form
+              className="mt-3 flex flex-wrap items-end gap-2"
+              onSubmit={(e) => { e.preventDefault(); run(() => apiPost(`/api/draw/competitions/${competition.id}/schedule`, { scheduledAt: when })); }}
             >
-              {busy ? "Drawing…" : "Run draw"}
-            </Button>
-          </div>
+              <label className="text-sm">
+                <span className="text-muted">Draw date &amp; time</span>
+                <input
+                  type="datetime-local"
+                  value={when}
+                  onChange={(e) => setWhen(e.target.value)}
+                  required
+                  className="mt-1 block rounded-lg border border-border bg-surface-2 px-2 py-1.5 text-ink focus:border-brand focus:outline-none"
+                />
+              </label>
+              <Button disabled={busy}>Schedule draw</Button>
+            </form>
+          )}
         </>
       )}
       <ErrorText>{error}</ErrorText>

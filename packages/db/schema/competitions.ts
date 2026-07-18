@@ -12,6 +12,11 @@ export const competitionStatusValues = [
 ] as const;
 export type CompetitionStatus = (typeof competitionStatusValues)[number];
 
+// State of the live, scheduled draw (distinct from the competition's own status).
+// not_scheduled → scheduled (admin picks a time) → live (spinning) → completed.
+export const drawStateValues = ["not_scheduled", "scheduled", "live", "completed"] as const;
+export type DrawState = (typeof drawStateValues)[number];
+
 export const competitions = sqliteTable(
   "competitions",
   {
@@ -33,6 +38,13 @@ export const competitions = sqliteTable(
     seasonStart: integer("season_start", { mode: "timestamp" }).notNull(),
     seasonEnd: integer("season_end", { mode: "timestamp" }).notNull(),
     status: text("status", { enum: competitionStatusValues }).notNull().default("draft"),
+    // Scheduled live draw: admin sets drawScheduledAt; on "start" the full
+    // random order is fixed by drawSeed and revealed one pick per "spin". The
+    // seed makes the whole reveal reproducible/auditable after the fact.
+    drawState: text("draw_state", { enum: drawStateValues }).notNull().default("not_scheduled"),
+    drawScheduledAt: integer("draw_scheduled_at", { mode: "timestamp" }),
+    drawSeed: text("draw_seed"),
+    drawStartedByUserId: text("draw_started_by_user_id"),
     joinCode: text("join_code").notNull(),
     joinCodeExpiresAt: integer("join_code_expires_at", { mode: "timestamp" }),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
