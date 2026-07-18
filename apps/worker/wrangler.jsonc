@@ -7,13 +7,11 @@
   "assets": {
     "directory": "./build/client"
   },
-  // Replace database_id after running:
-  //   wrangler d1 create spectrum-sweeps-db
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "spectrum-sweeps-db",
-      "database_id": "REPLACE_WITH_D1_DATABASE_ID",
+      "database_id": "9d6041ba-63b0-460f-bb0f-6705ddefa9a7",
       "migrations_dir": "../../packages/db/migrations"
     }
   ],
