@@ -1,6 +1,7 @@
 import { NavLink, useLocation } from "react-router";
 import type { ReactNode } from "react";
 import { BrandWordmark } from "./Brand";
+import { useAuth } from "../auth";
 
 // Left-sidebar shell from the concept mockups. Only real destinations are
 // linkable; features from later phases (spin-wheel animation, polls) are shown
@@ -62,6 +63,28 @@ function SoonItem({ icon, label }: { icon: ReactNode; label: string }) {
   );
 }
 
+function UserChip() {
+  const { user, loading, logout } = useAuth();
+  if (loading) return null;
+  return (
+    <div className="mx-3 mt-3">
+      {user ? (
+        <div className="rounded-xl border border-border bg-surface-2/40 p-3">
+          <p className="truncate text-sm font-medium text-ink">{user.nickname}</p>
+          <p className="text-xs text-muted">
+            {user.accountType} · L{user.level}
+          </p>
+          <button onClick={() => logout()} className="mt-1 text-xs text-brand hover:underline">Log out</button>
+        </div>
+      ) : (
+        <NavLink to="/login" className="block rounded-lg bg-brand px-3 py-2 text-center text-sm font-medium text-white hover:bg-brand-hi">
+          Log in / Register
+        </NavLink>
+      )}
+    </div>
+  );
+}
+
 export function AppShell({ children }: { children: ReactNode }) {
   const location = useLocation();
   return (
@@ -77,7 +100,8 @@ export function AppShell({ children }: { children: ReactNode }) {
           <SoonItem icon={<IconPoll />} label="Polls" />
           <NavItem to="/admin" icon={<IconShield />} label="Admin" />
         </nav>
-        <div className="m-3 rounded-xl border border-border bg-gradient-to-b from-brand-lo/30 to-surface p-4">
+        <UserChip />
+        <div className="m-3 mt-0 rounded-xl border border-border bg-gradient-to-b from-brand-lo/30 to-surface p-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-gold">Provably fair</p>
           <p className="mt-1 text-xs text-muted">
             Every draw is random, recorded, and verifiable against a published seed.

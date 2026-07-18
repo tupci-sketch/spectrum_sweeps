@@ -2,12 +2,15 @@ import { useState } from "react";
 import { Link, useLoaderData } from "react-router";
 import { apiGet, apiPost } from "../api-client";
 import { Button, Card, ErrorText, Field, Select, useSubmit } from "../admin-ui";
+import { useAuth } from "../auth";
+import { AuthGate } from "../components/AuthGate";
 
 interface OfficeGroup { id: string; name: string; }
 interface User { id: string; nickname: string; email: string; role: string; }
 interface League { id: string; name: string; status: string; officeGroupId: string; }
 interface Sport { id: string; name: string; formatType: string; }
 interface Competition { id: string; name: string; formatType: string; status: string; targetEntryCount: number; leagueId: string; }
+interface InviteCode { id: string; code: string; purpose: string; role: string; grantLevel: number; accountType: string; note: string | null; redeemedByUserId: string | null; }
 
 export async function clientLoader() {
   const [officeGroups, users, leagues, sports, competitions] = await Promise.all([
@@ -17,11 +20,23 @@ export async function clientLoader() {
     apiGet<Sport[]>("/api/admin/sports"),
     apiGet<Competition[]>("/api/admin/competitions"),
   ]);
-  return { officeGroups, users, leagues, sports, competitions };
+  // Invite codes are L5-gated; when logged out this 401s — swallow it so the
+  // loader stays usable and the AuthGate handles the sign-in prompt.
+  const invites = await apiGet<InviteCode[]>("/api/admin/invites").catch(() => [] as InviteCode[]);
+  return { officeGroups, users, leagues, sports, competitions, invites };
 }
 
 export default function Admin() {
-  const { officeGroups, users, leagues, sports, competitions } = useLoaderData<typeof clientLoader>();
+  return (
+    <AuthGate minLevel={5}>
+      <AdminInner />
+    </AuthGate>
+  );
+}
+
+function AdminInner() {
+  const { officeGroups, users, leagues, sports, competitions, invites } = useLoaderData<typeof clientLoader>();
+  const { user, logout } = useAuth();
   const admins = users.filter((u) => u.role === "admin" || u.role === "organiser");
 
   return (
@@ -29,10 +44,15 @@ export default function Admin() {
       <header className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-extrabold tracking-tight">Admin</h1>
-          <p className="text-muted text-sm">Set up leagues, competitions and run draws.</p>
+          <p className="text-muted text-sm">
+            Signed in as {user?.nickname} · level {user?.level} ·{" "}
+            <button onClick={() => logout()} className="text-brand hover:underline">log out</button>
+          </p>
         </div>
         <Link to="/" className="text-brand text-sm hover:underline">View public site →</Link>
       </header>
+
+      <InviteCodesCard invites={invites} isOwner={(user?.level ?? 0) >= 7} officeGroups={officeGroups} />
 
       {/* Building blocks — office group + organiser must exist before a league */}
       <div className="grid gap-4 sm:grid-cols-2">
@@ -198,6 +218,90 @@ function CompetitionCard({ competitions, leagues, sports }: { competitions: Comp
         </form>
       )}
       <ErrorText>{error}</ErrorText>
+    </Card>
+  );
+}
+
+function InviteCodesCard({
+  invites, isOwner, officeGroups,
+}: { invites: InviteCode[]; isOwner: boolean; officeGroups: OfficeGroup[] }) {
+  const { run, error, busy } = useSubmit();
+  const [purpose, setPurpose] = useState("signup");
+  const [accountType, setAccountType] = useState("participant");
+  const [grantLevel, setGrantLevel] = useState("1");
+  const [note, setNote] = useState("");
+  const available = invites.filter((i) => !i.redeemedByUserId);
+  const used = invites.filter((i) => i.redeemedByUserId);
+
+  return (
+    <Card title="Invite codes">
+      <p className="mb-3 text-sm text-muted">
+        Generate a one-time code so someone can register. Owners can also issue{" "}
+        <span className="text-gold">organiser grants</span> that let an organiser run their own league.
+      </p>
+
+      <form
+        className="grid gap-2 sm:grid-cols-2 sm:items-end"
+        onSubmit={(e) => {
+          e.preventDefault();
+          run(() =>
+            apiPost("/api/admin/invites", {
+              purpose,
+              accountType: purpose === "signup" ? accountType : undefined,
+              role: purpose === "signup" ? (accountType === "organiser" ? "organiser" : "participant") : undefined,
+              grantLevel: purpose === "signup" ? Number(grantLevel) : undefined,
+              officeGroupId: officeGroups[0]?.id,
+              note: note || undefined,
+            }),
+          );
+        }}
+      >
+        <Select label="Code type" value={purpose} onChange={(e) => setPurpose(e.target.value)}>
+          <option value="signup">Signup</option>
+          {isOwner && <option value="organiser_grant">Organiser grant (owner only)</option>}
+        </Select>
+        {purpose === "signup" && (
+          <>
+            <Select label="Account type" value={accountType} onChange={(e) => setAccountType(e.target.value)}>
+              <option value="participant">Participant</option>
+              <option value="organiser">Organiser</option>
+              <option value="trader">Trader (can inspect audits)</option>
+              <option value="moderator">Moderator</option>
+            </Select>
+            <Field label="Level (1–7)" type="number" min={1} max={7} value={grantLevel} onChange={(e) => setGrantLevel(e.target.value)} />
+          </>
+        )}
+        <Field label="Note (optional)" value={note} onChange={(e) => setNote(e.target.value)} placeholder="e.g. for Priya in Trading" />
+        <div className="sm:col-span-2"><Button disabled={busy}>Generate code</Button></div>
+      </form>
+      <ErrorText>{error}</ErrorText>
+
+      {available.length > 0 && (
+        <div className="mt-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Available</p>
+          <ul className="mt-1 space-y-1 text-sm">
+            {available.map((i) => (
+              <li key={i.id} className="flex items-center justify-between border-b border-border py-1">
+                <button
+                  className="font-mono text-gold hover:underline"
+                  onClick={() => navigator.clipboard?.writeText(i.code)}
+                  title="Copy"
+                >
+                  {i.code}
+                </button>
+                <span className="text-xs text-muted">
+                  {i.purpose.replace(/_/g, " ")}
+                  {i.purpose === "signup" ? ` · ${i.accountType} · L${i.grantLevel}` : ""}
+                  {i.note ? ` · ${i.note}` : ""}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {used.length > 0 && (
+        <p className="mt-3 text-xs text-faint">{used.length} code{used.length === 1 ? "" : "s"} already redeemed.</p>
+      )}
     </Card>
   );
 }

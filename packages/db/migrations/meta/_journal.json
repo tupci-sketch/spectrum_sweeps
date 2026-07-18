@@ -15,6 +15,13 @@
       "when": 1784342670295,
       "tag": "0001_condemned_vengeance",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1784367967836,
+      "tag": "0002_mighty_falcon",
+      "breakpoints": true
     }
   ]
 }

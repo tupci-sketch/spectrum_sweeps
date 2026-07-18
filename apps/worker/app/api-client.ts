@@ -4,8 +4,28 @@
 // for development.
 export const API_BASE: string = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8787";
 
+// Bearer-token session (frontend and API are on different origins, so a token
+// in the Authorization header is more reliable than cross-site cookies).
+const TOKEN_KEY = "spectrum_token";
+
+export function getToken(): string | null {
+  if (typeof localStorage === "undefined") return null;
+  return localStorage.getItem(TOKEN_KEY);
+}
+export function setToken(token: string) {
+  localStorage.setItem(TOKEN_KEY, token);
+}
+export function clearToken() {
+  localStorage.removeItem(TOKEN_KEY);
+}
+
+function authHeaders(base: Record<string, string> = {}): Record<string, string> {
+  const token = getToken();
+  return token ? { ...base, Authorization: `Bearer ${token}` } : base;
+}
+
 export async function apiGet<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`);
+  const res = await fetch(`${API_BASE}${path}`, { headers: authHeaders() });
   if (!res.ok) {
     throw new Response(`API request failed: ${path}`, { status: res.status });
   }
@@ -22,7 +42,7 @@ export interface ApiError {
 async function send<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     method,
-    headers: { "Content-Type": "application/json" },
+    headers: authHeaders({ "Content-Type": "application/json" }),
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const text = await res.text();

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { users, userRoleValues } from "@spectrum-sweeps/db";
 import { newId } from "@spectrum-sweeps/shared";
 import { z } from "zod";
-import type { Bindings } from "./bindings";
+import type { AppEnv } from "./bindings";
 import { getDb } from "./db";
 
 const createSchema = z.object({
@@ -14,10 +14,30 @@ const createSchema = z.object({
   officeGroupId: z.string().optional(),
 });
 
-export const usersApi = new Hono<{ Bindings: Bindings }>()
+// Public-safe projection — the leaderboard/profile pages need nicknames but
+// must never receive emails or password hashes.
+const publicColumns = {
+  id: users.id,
+  nickname: users.nickname,
+  displayName: users.displayName,
+  role: users.role,
+  level: users.level,
+  accountType: users.accountType,
+  avatarUrl: users.avatarUrl,
+  bio: users.bio,
+} as const;
+
+export const usersApi = new Hono<AppEnv>()
   .get("/", async (c) => {
     const db = getDb(c.env);
-    return c.json(await db.select().from(users).all());
+    // Privileged callers (L5+) get full rows incl. email for admin management;
+    // everyone else gets the public projection.
+    const requester = c.get("user");
+    if (requester && requester.level >= 5) {
+      const rows = await db.select().from(users).all();
+      return c.json(rows.map(({ passwordHash: _p, ...rest }) => rest));
+    }
+    return c.json(await db.select(publicColumns).from(users).all());
   })
   // Find-or-create by email — lets the admin add a participant by just typing a
   // name + email without a separate user-management step; re-adding the same
@@ -27,7 +47,10 @@ export const usersApi = new Hono<{ Bindings: Bindings }>()
     const db = getDb(c.env);
 
     const [existing] = await db.select().from(users).where(eq(users.email, body.email)).all();
-    if (existing) return c.json(existing);
+    if (existing) {
+      const { passwordHash: _p, ...safe } = existing;
+      return c.json(safe);
+    }
 
     const row = {
       id: newId("user"),
