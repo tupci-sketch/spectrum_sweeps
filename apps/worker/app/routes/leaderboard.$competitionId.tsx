@@ -1,38 +1,34 @@
 import { useLoaderData } from "react-router";
-import { desc, eq } from "drizzle-orm";
-import { competitions, standingsSnapshots } from "@spectrum-sweeps/db";
 import type {
   KnockoutRow,
   SeasonLongRow,
   StandingsRow as PointsRow,
 } from "../../server/scoring/types";
 import type { Route } from "./+types/leaderboard.$competitionId";
-import { getDb } from "../../server/api/db";
-import { cloudflareContext } from "../context";
+import { API_BASE, apiGet } from "../api-client";
 
-export async function loader({ params, context }: Route.LoaderArgs) {
-  const { env } = context.get(cloudflareContext);
-  const db = getDb(env);
-  const [competition] = await db
-    .select()
-    .from(competitions)
-    .where(eq(competitions.id, params.competitionId))
-    .all();
-  if (!competition) throw new Response("Competition not found", { status: 404 });
+interface Competition {
+  id: string;
+  name: string;
+  formatType: "knockout" | "season_long" | "standings";
+}
+interface SnapshotRow {
+  snapshot: { rows: unknown[] };
+}
 
-  const [snapshot] = await db
-    .select()
-    .from(standingsSnapshots)
-    .where(eq(standingsSnapshots.competitionId, params.competitionId))
-    .orderBy(desc(standingsSnapshots.computedAt))
-    .limit(1)
-    .all();
+export async function clientLoader({ params }: Route.ClientLoaderArgs) {
+  const competition = await apiGet<Competition>(`/api/admin/competitions/${params.competitionId}`);
 
-  return { competition, snapshot: snapshot ?? null };
+  // The leaderboard endpoint 404s when no results have been entered yet — that's
+  // a normal empty state, not an error, so don't let apiGet throw on it.
+  const res = await fetch(`${API_BASE}/api/leaderboard/${params.competitionId}`);
+  const snapshot = res.ok ? ((await res.json()) as SnapshotRow) : null;
+
+  return { competition, snapshot };
 }
 
 export default function Leaderboard() {
-  const { competition, snapshot } = useLoaderData<typeof loader>();
+  const { competition, snapshot } = useLoaderData<typeof clientLoader>();
 
   if (!snapshot) {
     return (
@@ -43,7 +39,7 @@ export default function Leaderboard() {
     );
   }
 
-  const rows = (snapshot.snapshot as { rows: unknown[] }).rows;
+  const rows = snapshot.snapshot.rows;
 
   return (
     <main className="mx-auto max-w-2xl p-8">

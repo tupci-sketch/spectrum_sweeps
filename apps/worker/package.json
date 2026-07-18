@@ -4,8 +4,9 @@
   "type": "module",
   "scripts": {
     "dev": "react-router dev",
+    "dev:api": "wrangler dev",
     "build": "react-router build",
-    "deploy": "pnpm run build && wrangler deploy",
+    "deploy:api": "wrangler deploy",
     "typecheck": "react-router typegen && tsc --noEmit",
     "test": "vitest run",
     "cf-typegen": "wrangler types"
@@ -22,7 +23,6 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.45.1",
     "@cloudflare/workers-types": "^5.20260717.1",
     "@react-router/dev": "^8.2.0",
     "@tailwindcss/vite": "^4.3.3",

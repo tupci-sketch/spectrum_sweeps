@@ -25,6 +25,12 @@ export default function App() {
   return <Outlet />;
 }
 
+// Required in SPA mode (ssr: false): shown during the initial client hydration
+// before any route's clientLoader has resolved.
+export function HydrateFallback() {
+  return <main className="mx-auto max-w-3xl p-8 text-slate-400">Loading…</main>;
+}
+
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   const message = error instanceof Error ? error.message : "Unknown error";
   return (

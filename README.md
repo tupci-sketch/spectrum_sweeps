@@ -4,39 +4,47 @@ Private office tournament tracker — knockout draws, season-long league draws, 
 points-based standings across football, motorsport, and American sports, with an
 optional bridge into Betfred's B-Hive recognition platform.
 
-Full architecture and phased roadmap: see the engineering plan (Cloudflare
-Workers + D1 + R2 + KV + Durable Objects, React Router v7 + Hono).
+## Architecture
 
-## Stack
+Split frontend/backend:
 
-- **Runtime**: Cloudflare Workers (Workers Static Assets — single deployable)
-- **UI**: React Router v7 (framework mode) + Tailwind CSS
-- **API**: Hono, mounted under `/api/*` in the same Worker
-- **Data**: D1 via Drizzle ORM (`packages/db`)
-- **Shared types/validation**: `packages/shared` (zod scoring-config schemas per `format_type`)
+- **Frontend** — a static React Router v7 SPA (Tailwind CSS), hosted on **GitHub Pages**.
+- **Backend** — a Cloudflare **Worker** (Hono API + **D1** database via Drizzle ORM), deployed separately.
+
+The SPA calls the Worker cross-origin; the Worker URL is injected at build time
+via `VITE_API_BASE_URL`. Live API: `https://spectrum-sweeps.relics62statues.workers.dev`.
 
 ## Layout
 
 ```
-apps/worker/       React Router UI + Hono API + scoring engine + Worker entry
-packages/db/        Drizzle schema, migrations, seed data
-packages/shared/    format_type, scoring-config zod schemas, shared types, id helper
+apps/worker/
+  app/                # React Router SPA (frontend → GitHub Pages)
+  server/             # Hono API + scoring engine (backend → Cloudflare Worker)
+  workers/app.ts      # Worker entry (API-only)
+packages/db/          # Drizzle schema, migrations, seed data
+packages/shared/      # format_type, scoring-config zod schemas, shared types, id helper
 ```
 
-## Getting started
+## Getting started (local dev)
 
 ```bash
 pnpm install
 
-# one-time: point apps/worker/wrangler.jsonc at your own D1 database
-# (wrangler d1 create spectrum-sweeps-db) and replace the placeholder database_id
+# one-time: create your own D1 database and apply migrations + seed
+cd apps/worker
+pnpm exec wrangler d1 migrations apply spectrum-sweeps-db --local
+pnpm --filter @spectrum-sweeps/db run seed
+pnpm exec wrangler d1 execute spectrum-sweeps-db --local --file=../../packages/db/seed/seed.sql
 
-pnpm --filter @spectrum-sweeps/worker exec wrangler d1 migrations apply spectrum-sweeps-db --local
-pnpm run db:seed
-pnpm --filter @spectrum-sweeps/worker exec wrangler d1 execute spectrum-sweeps-db --local --file=../../packages/db/seed/seed.sql
-
-pnpm run dev
+# run the two halves in separate terminals:
+pnpm run dev:api    # Worker API on http://localhost:8787
+pnpm run dev        # SPA (defaults to calling localhost:8787)
 ```
+
+## Deploying
+
+- **API (Worker)**: `cd apps/worker && pnpm run deploy:api` (needs `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`), or via the `deploy-api.yml` GitHub Actions workflow on push to `main`.
+- **Frontend (Pages)**: the `deploy-pages.yml` workflow builds the SPA and publishes to GitHub Pages on push to `main`. Set repo variable `API_BASE_URL` to the Worker URL (and `PAGES_BASE` if serving under a subpath rather than a custom-domain root).
 
 ## Scripts
 
@@ -46,8 +54,8 @@ pnpm run dev
 
 ## Status
 
-Phase 1 (core tracker) scaffold: office groups, leagues, sports (seeded:
+Phase 1 (core tracker), deployed live: office groups, leagues, sports (seeded:
 World Cup / Premier League / F1), competitions, participants, manual
-draw/assignment entry, result entry, and a format-aware leaderboard are all
-wired end-to-end. Admin routes are expected to sit behind Cloudflare Access
-at the edge — no app-level auth yet (phase 2).
+draw/assignment entry, result entry, and a format-aware leaderboard, all wired
+end-to-end against the real D1 database. Admin routes are expected to sit behind
+Cloudflare Access at the edge — no app-level auth yet (phase 2).

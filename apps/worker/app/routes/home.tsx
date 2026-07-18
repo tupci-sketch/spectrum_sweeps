@@ -1,21 +1,28 @@
 import { Link, useLoaderData } from "react-router";
-import { competitions, leagues } from "@spectrum-sweeps/db";
-import type { Route } from "./+types/home";
-import { getDb } from "../../server/api/db";
-import { cloudflareContext } from "../context";
+import { apiGet } from "../api-client";
 
-export async function loader({ context }: Route.LoaderArgs) {
-  const { env } = context.get(cloudflareContext);
-  const db = getDb(env);
-  const [allLeagues, allCompetitions] = await Promise.all([
-    db.select().from(leagues).all(),
-    db.select().from(competitions).all(),
+interface LeagueRow {
+  id: string;
+  name: string;
+  status: string;
+}
+interface CompetitionRow {
+  id: string;
+  name: string;
+  formatType: string;
+  status: string;
+}
+
+export async function clientLoader() {
+  const [leagues, competitions] = await Promise.all([
+    apiGet<LeagueRow[]>("/api/admin/leagues"),
+    apiGet<CompetitionRow[]>("/api/admin/competitions"),
   ]);
-  return { leagues: allLeagues, competitions: allCompetitions };
+  return { leagues, competitions };
 }
 
 export default function Home() {
-  const { leagues: leagueRows, competitions: competitionRows } = useLoaderData<typeof loader>();
+  const { leagues, competitions } = useLoaderData<typeof clientLoader>();
 
   return (
     <main className="mx-auto max-w-3xl p-8">
@@ -25,19 +32,19 @@ export default function Home() {
       <section className="mt-8">
         <h2 className="text-lg font-semibold">Leagues</h2>
         <ul className="mt-2 space-y-1">
-          {leagueRows.map((league) => (
+          {leagues.map((league) => (
             <li key={league.id} className="text-slate-300">
               {league.name} <span className="text-slate-500">({league.status})</span>
             </li>
           ))}
-          {leagueRows.length === 0 && <li className="text-slate-500">No leagues yet.</li>}
+          {leagues.length === 0 && <li className="text-slate-500">No leagues yet.</li>}
         </ul>
       </section>
 
       <section className="mt-8">
         <h2 className="text-lg font-semibold">Competitions</h2>
         <ul className="mt-2 space-y-1">
-          {competitionRows.map((competition) => (
+          {competitions.map((competition) => (
             <li key={competition.id}>
               <Link to={`/leaderboard/${competition.id}`} className="text-sky-400 hover:underline">
                 {competition.name}
@@ -47,7 +54,7 @@ export default function Home() {
               </span>
             </li>
           ))}
-          {competitionRows.length === 0 && <li className="text-slate-500">No competitions yet.</li>}
+          {competitions.length === 0 && <li className="text-slate-500">No competitions yet.</li>}
         </ul>
       </section>
     </main>

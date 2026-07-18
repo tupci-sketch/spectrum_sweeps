@@ -8,8 +8,9 @@
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "pnpm --filter @spectrum-sweeps/worker dev",
+    "dev:api": "pnpm --filter @spectrum-sweeps/worker dev:api",
     "build": "pnpm --filter @spectrum-sweeps/worker build",
-    "deploy": "pnpm --filter @spectrum-sweeps/worker deploy",
+    "deploy:api": "pnpm --filter @spectrum-sweeps/worker deploy:api",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
     "test": "pnpm -r test",

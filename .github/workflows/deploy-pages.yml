@@ -1,0 +1,69 @@
+name: Deploy Frontend (GitHub Pages)
+
+# Builds the static SPA (apps/worker/app) and publishes it to GitHub Pages.
+# The API base URL is injected at build time and points at the Cloudflare
+# Worker (deployed separately). Set the repository variable API_BASE_URL to the
+# Worker's URL (e.g. https://spectrum-sweeps.relics62statues.workers.dev).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/worker/app/**"
+      - "apps/worker/react-router.config.ts"
+      - "apps/worker/vite.config.ts"
+      - "packages/shared/**"
+      - ".github/workflows/deploy-pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build SPA
+        run: pnpm run build
+        working-directory: apps/worker
+        env:
+          # The Worker API URL. Defaults to the current workers.dev URL if the
+          # repo variable isn't set; override via Settings → Variables.
+          VITE_API_BASE_URL: ${{ vars.API_BASE_URL || 'https://spectrum-sweeps.relics62statues.workers.dev' }}
+          # Serve at the custom-domain root. If publishing to the default
+          # <user>.github.io/spectrum_sweeps/ path instead, set repo variable
+          # PAGES_BASE to "/spectrum_sweeps/".
+          PAGES_BASE: ${{ vars.PAGES_BASE || '/' }}
+
+      - name: SPA fallback for client-side routing
+        # GitHub Pages has no server, so deep links (e.g. /leaderboard/:id) 404
+        # on refresh unless a 404.html mirrors index.html.
+        run: cp apps/worker/build/client/index.html apps/worker/build/client/404.html
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/worker/build/client
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

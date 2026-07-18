@@ -1,8 +1,11 @@
 import { reactRouter } from "@react-router/dev/vite";
-import { cloudflare } from "@cloudflare/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vite";
 
+// Builds the static SPA frontend only. The Cloudflare Worker API is a separate
+// build target deployed via `wrangler deploy` (workers/app.ts), so the
+// Cloudflare Vite plugin is intentionally not used here.
 export default defineConfig({
-  plugins: [cloudflare({ viteEnvironment: { name: "ssr" } }), tailwindcss(), reactRouter()],
+  base: process.env.PAGES_BASE ?? "/",
+  plugins: [tailwindcss(), reactRouter()],
 });
