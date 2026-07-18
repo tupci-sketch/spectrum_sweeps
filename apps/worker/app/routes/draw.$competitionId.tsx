@@ -3,8 +3,15 @@ import { Link, useParams } from "react-router";
 import { API_BASE, apiPost, apiErrorMessage } from "../api-client";
 import { useAuth } from "../auth";
 import { Panel, StatusPill } from "../components/ui";
+import { ChatBox } from "../components/ChatBox";
 
-interface Reveal { participantId: string; nickname: string; team: string; }
+interface Reveal { participantId: string; nickname: string; team: string; crestUrl: string | null; competitorNumber: number | null; }
+
+function Crest({ url, number, size = 24 }: { url: string | null; number: number | null; size?: number }) {
+  if (url) return <img src={url} alt="" width={size} height={size} className="inline-block object-contain align-middle" />;
+  if (number != null) return <span className="inline-grid place-items-center rounded bg-surface-2 px-1 text-xs font-bold text-gold" style={{ minWidth: size, height: size }}>{number}</span>;
+  return null;
+}
 interface DrawStateResp {
   competition: { id: string; name: string; formatType: string; drawState: string; drawScheduledAt: number | null };
   totalParticipants: number;
@@ -99,7 +106,9 @@ export default function DrawRoom() {
                   {flash && !state.complete && (
                     <div className="mt-2 animate-pulse">
                       <p className="text-2xl font-extrabold text-ink">{flash.nickname}</p>
-                      <p className="text-lg text-gold">drew {flash.team}</p>
+                      <p className="flex items-center justify-center gap-2 text-lg text-gold">
+                        drew <Crest url={flash.crestUrl} number={flash.competitorNumber} size={28} /> {flash.team}
+                      </p>
                     </div>
                   )}
                   {state.complete && <p className="mt-2 text-lg font-semibold text-gold">🏆 All allocations revealed</p>}
@@ -148,17 +157,24 @@ export default function DrawRoom() {
                       <span className="grid h-6 w-6 place-items-center rounded-full bg-surface-2 text-xs text-muted">{i + 1}</span>
                       <span className="font-medium">{r.nickname}</span>
                     </span>
-                    <span className="text-gold">{r.team}</span>
+                    <span className="flex items-center gap-2 text-gold">
+                      <Crest url={r.crestUrl} number={r.competitorNumber} /> {r.team}
+                    </span>
                   </li>
                 ))}
               </ul>
               {state.complete && (
-                <Link to={`/leaderboard/${competitionId}`} className="mt-4 inline-block text-brand hover:underline">
-                  View leaderboard →
-                </Link>
+                <div className="mt-4 flex gap-4">
+                  <Link to={`/leaderboard/${competitionId}`} className="text-brand hover:underline">View leaderboard →</Link>
+                  <Link to={`/audit/${competitionId}`} className="text-muted hover:text-ink hover:underline">Verify this draw →</Link>
+                </div>
               )}
             </Panel>
           )}
+
+          <div className="mt-6">
+            <ChatBox competitionId={competitionId} />
+          </div>
         </>
       )}
     </div>

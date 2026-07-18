@@ -107,6 +107,9 @@ export default function Leaderboard() {
         <TrustTile title="Transparent" body="Every draw is recorded with a pre-committed hash before the reveal." />
         <TrustTile title="Verifiable" body="The published seed re-derives that hash, proving nothing was changed." />
       </div>
+      <Link to={`/audit/${competition.id}`} className="mt-3 inline-block text-sm text-brand hover:underline">
+        Inspect the full paper trail →
+      </Link>
     </div>
   );
 }

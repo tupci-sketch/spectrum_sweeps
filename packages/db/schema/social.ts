@@ -9,9 +9,8 @@ import { users } from "./users";
 
 export const polls = sqliteTable("polls", {
   id: text("id").primaryKey(),
-  leagueId: text("league_id")
-    .notNull()
-    .references(() => leagues.id),
+  // Nullable = a site-wide poll (not tied to a league).
+  leagueId: text("league_id").references(() => leagues.id),
   question: text("question").notNull(),
   options: text("options", { mode: "json" }).notNull().$type<string[]>(),
   createdBy: text("created_by")
@@ -39,9 +38,8 @@ export const pollVotes = sqliteTable(
 
 export const forumThreads = sqliteTable("forum_threads", {
   id: text("id").primaryKey(),
-  leagueId: text("league_id")
-    .notNull()
-    .references(() => leagues.id),
+  // Nullable = a site-wide discussion thread.
+  leagueId: text("league_id").references(() => leagues.id),
   title: text("title").notNull(),
   createdBy: text("created_by")
     .notNull()
@@ -65,9 +63,9 @@ export const forumPosts = sqliteTable("forum_posts", {
 
 export const chatMessages = sqliteTable("chat_messages", {
   id: text("id").primaryKey(),
-  leagueId: text("league_id")
-    .notNull()
-    .references(() => leagues.id),
+  leagueId: text("league_id").references(() => leagues.id),
+  // Per-draw chat lives against a competition (the draw room's chat window).
+  competitionId: text("competition_id"),
   userId: text("user_id")
     .notNull()
     .references(() => users.id),

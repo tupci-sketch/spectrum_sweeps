@@ -12,6 +12,8 @@ import { participantsApi } from "./participants";
 import { drawApi } from "./draw";
 import { drawLiveApi } from "./draw-live";
 import { catalogApi } from "./catalog";
+import { profilesApi } from "./profiles";
+import { socialApi } from "./social";
 import { resultsApi } from "./results";
 import { leaderboardApi } from "./leaderboard";
 import { withUser, requireLevel } from "../auth/middleware";
@@ -63,6 +65,8 @@ export const api = app
   .route("/draw", drawLiveApi)
   // Catalog: GET public (selectable leagues + live table); POST /:id/sync L5.
   .route("/catalog", catalogApi)
+  .route("/profiles", profilesApi)
+  .route("/social", socialApi)
   .route("/leaderboard", leaderboardApi);
 
 export type ApiType = typeof api;

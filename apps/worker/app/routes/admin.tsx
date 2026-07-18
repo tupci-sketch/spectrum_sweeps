@@ -12,18 +12,21 @@ interface Sport { id: string; name: string; formatType: string; }
 interface Competition { id: string; name: string; formatType: string; status: string; targetEntryCount: number; leagueId: string; }
 interface InviteCode { id: string; code: string; purpose: string; role: string; grantLevel: number; accountType: string; note: string | null; redeemedByUserId: string | null; }
 
+interface CatalogLeague { id: string; name: string; formatType: string; sportLabel: string; }
+
 export async function clientLoader() {
-  const [officeGroups, users, leagues, sports, competitions] = await Promise.all([
+  const [officeGroups, users, leagues, sports, competitions, catalog] = await Promise.all([
     apiGet<OfficeGroup[]>("/api/admin/office-groups"),
     apiGet<User[]>("/api/admin/users"),
     apiGet<League[]>("/api/admin/leagues"),
     apiGet<Sport[]>("/api/admin/sports"),
     apiGet<Competition[]>("/api/admin/competitions"),
+    apiGet<CatalogLeague[]>("/api/catalog"),
   ]);
   // Invite codes are L5-gated; when logged out this 401s — swallow it so the
   // loader stays usable and the AuthGate handles the sign-in prompt.
   const invites = await apiGet<InviteCode[]>("/api/admin/invites").catch(() => [] as InviteCode[]);
-  return { officeGroups, users, leagues, sports, competitions, invites };
+  return { officeGroups, users, leagues, sports, competitions, invites, catalog };
 }
 
 export default function Admin() {
@@ -35,7 +38,7 @@ export default function Admin() {
 }
 
 function AdminInner() {
-  const { officeGroups, users, leagues, sports, competitions, invites } = useLoaderData<typeof clientLoader>();
+  const { officeGroups, users, leagues, sports, competitions, invites, catalog } = useLoaderData<typeof clientLoader>();
   const { user, logout } = useAuth();
   const admins = users.filter((u) => u.role === "admin" || u.role === "organiser");
 
@@ -61,7 +64,7 @@ function AdminInner() {
       </div>
 
       <LeagueCard leagues={leagues} officeGroups={officeGroups} admins={admins} />
-      <CompetitionCard competitions={competitions} leagues={leagues} sports={sports} />
+      <CompetitionCard competitions={competitions} leagues={leagues} sports={sports} catalog={catalog} />
     </div>
   );
 }
@@ -165,7 +168,7 @@ function LeagueCard({ leagues, officeGroups, admins }: { leagues: League[]; offi
   );
 }
 
-function CompetitionCard({ competitions, leagues, sports }: { competitions: Competition[]; leagues: League[]; sports: Sport[] }) {
+function CompetitionCard({ competitions, leagues, sports, catalog }: { competitions: Competition[]; leagues: League[]; sports: Sport[]; catalog: CatalogLeague[] }) {
   const { run, error, busy } = useSubmit();
   const [name, setName] = useState("");
   const [leagueId, setLeagueId] = useState("");
@@ -173,6 +176,7 @@ function CompetitionCard({ competitions, leagues, sports }: { competitions: Comp
   const [target, setTarget] = useState("20");
   const [seasonStart, setSeasonStart] = useState("");
   const [seasonEnd, setSeasonEnd] = useState("");
+  const [catalogLeagueId, setCatalogLeagueId] = useState("");
   const ready = leagues.length > 0 && sports.length > 0;
 
   return (
@@ -199,6 +203,7 @@ function CompetitionCard({ competitions, leagues, sports }: { competitions: Comp
                 sportId: sportId || sports[0].id,
                 targetEntryCount: Number(target),
                 seasonStart, seasonEnd,
+                catalogLeagueId: catalogLeagueId || undefined,
               }),
               () => setName(""),
             );
@@ -212,6 +217,16 @@ function CompetitionCard({ competitions, leagues, sports }: { competitions: Comp
           <Select label="Sport" value={sportId} onChange={(e) => setSportId(e.target.value)}>
             {sports.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.formatType})</option>)}
           </Select>
+          {catalog.length > 0 && (
+            <Select
+              label="Populate teams from (optional)"
+              value={catalogLeagueId}
+              onChange={(e) => setCatalogLeagueId(e.target.value)}
+            >
+              <option value="">— none (add teams manually) —</option>
+              {catalog.map((cl) => <option key={cl.id} value={cl.id}>{cl.name}</option>)}
+            </Select>
+          )}
           <Field label="Season start" type="date" value={seasonStart} onChange={(e) => setSeasonStart(e.target.value)} required />
           <Field label="Season end" type="date" value={seasonEnd} onChange={(e) => setSeasonEnd(e.target.value)} required />
           <div className="sm:col-span-2"><Button disabled={busy}>Create competition</Button></div>

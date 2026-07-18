@@ -84,12 +84,17 @@ export const drawLiveApi = new Hono<AppEnv>()
       return c.json({ error: "need at least as many teams/drivers as participants before starting" }, 409);
     }
 
-    const hash = await commitHash(plan.seedHex, plan.p.map((x) => x.entry.id), Date.now());
+    const committedAtMs = Date.now();
+    const orderedEntryIds = plan.p.map((x) => x.entry.id);
+    const hash = await commitHash(plan.seedHex, orderedEntryIds, committedAtMs);
+    // Persist everything needed to independently recompute the hash later
+    // (except the seed, published only on completion): the algorithm, the exact
+    // commit timestamp, and the committed order.
     await db.insert(drawAuditLog).values({
       id: newId("audit"),
       competitionId,
       eventType: "draw_committed",
-      payload: { algorithm: "seeded-fisher-yates-v1", commitHash: hash, revealMode: "live" },
+      payload: { algorithm: "seeded-fisher-yates-v1", commitHash: hash, committedAtMs, orderedEntryIds, revealMode: "live" },
       actorUserId: actor.id,
     }).run();
 
@@ -153,6 +158,49 @@ export const drawLiveApi = new Hono<AppEnv>()
       pick: { nickname: u?.nickname ?? "Player", team: entry.teamOrDriverLabel, participantId: participant.id },
     });
   })
+  // Full transparency trail for a draw — public, because the whole point is
+  // that anyone can verify it. Returns every audit event (commit hash, seed,
+  // algorithm, actor, timestamps) plus the ordered allocations, so the hash can
+  // be recomputed and checked against the pre-commit.
+  .get("/:competitionId/audit", async (c) => {
+    const db = getDb(c.env);
+    const competitionId = c.req.param("competitionId");
+    const [comp] = await db.select().from(competitions).where(eq(competitions.id, competitionId)).all();
+    if (!comp) return c.json({ error: "not found" }, 404);
+
+    const log = await db
+      .select()
+      .from(drawAuditLog)
+      .where(eq(drawAuditLog.competitionId, competitionId))
+      .all();
+    log.sort((a, b) => a.occurredAt.getTime() - b.occurredAt.getTime());
+
+    const allUsers = await db.select().from(users).all();
+    const nick = new Map(allUsers.map((u) => [u.id, u.nickname]));
+
+    const pots = await db.select().from(drawPots).where(eq(drawPots.competitionId, competitionId)).all();
+    const entries = (
+      await Promise.all(pots.map((p) => db.select().from(potEntries).where(eq(potEntries.drawPotId, p.id)).all()))
+    ).flat();
+    const entryLabel = new Map(entries.map((e) => [e.id, e.teamOrDriverLabel]));
+
+    const asn = await db.select().from(assignments).where(eq(assignments.competitionId, competitionId)).all();
+
+    return c.json({
+      competition: { id: comp.id, name: comp.name, drawState: comp.drawState, drawSeed: comp.drawSeed },
+      events: log.map((e) => ({
+        eventType: e.eventType,
+        payload: e.payload,
+        actor: nick.get(e.actorUserId) ?? e.actorUserId,
+        occurredAt: e.occurredAt,
+      })),
+      allocations: asn.map((a) => ({
+        potEntryId: a.potEntryId,
+        team: entryLabel.get(a.potEntryId) ?? "—",
+        assignedAt: a.assignedAt,
+      })),
+    });
+  })
   // Public live state — the draw room polls this to render reveals in sync.
   .get("/:competitionId/state", async (c) => {
     const db = getDb(c.env);
@@ -173,6 +221,8 @@ export const drawLiveApi = new Hono<AppEnv>()
       await Promise.all(pots.map((p) => db.select().from(potEntries).where(eq(potEntries.drawPotId, p.id)).all()))
     ).flat();
     const entryLabel = new Map(entries.map((e) => [e.id, e.teamOrDriverLabel]));
+    const entryCrest = new Map(entries.map((e) => [e.id, e.crestUrl]));
+    const entryNumber = new Map(entries.map((e) => [e.id, e.competitorNumber]));
 
     const asn = await db.select().from(assignments).where(eq(assignments.competitionId, competitionId)).all();
     // Reveal order is assignment insertion order (each spin appends one).
@@ -180,6 +230,8 @@ export const drawLiveApi = new Hono<AppEnv>()
       participantId: a.participantId,
       nickname: nick.get(parts.find((p) => p.id === a.participantId)?.userId ?? "") ?? "Player",
       team: entryLabel.get(a.potEntryId) ?? "—",
+      crestUrl: entryCrest.get(a.potEntryId) ?? null,
+      competitorNumber: entryNumber.get(a.potEntryId) ?? null,
     }));
 
     return c.json({

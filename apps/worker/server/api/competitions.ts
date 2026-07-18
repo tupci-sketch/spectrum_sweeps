@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { competitions, sports } from "@spectrum-sweeps/db";
+import { competitions, sports, drawPots, potEntries, catalogTeams } from "@spectrum-sweeps/db";
 import { newId } from "@spectrum-sweeps/shared";
 import { z } from "zod";
-import type { Bindings } from "./bindings";
+import type { AppEnv } from "./bindings";
 import { getDb } from "./db";
 
 const createSchema = z.object({
@@ -13,13 +13,15 @@ const createSchema = z.object({
   seasonStart: z.coerce.date(),
   seasonEnd: z.coerce.date(),
   targetEntryCount: z.number().int().positive(),
+  // Optional: populate the draw pool straight from a selectable catalog league.
+  catalogLeagueId: z.string().optional(),
 });
 
 function generateJoinCode() {
   return crypto.randomUUID().slice(0, 8).toUpperCase();
 }
 
-export const competitionsApi = new Hono<{ Bindings: Bindings }>()
+export const competitionsApi = new Hono<AppEnv>()
   .get("/", async (c) => {
     const db = getDb(c.env);
     return c.json(await db.select().from(competitions).all());
@@ -53,5 +55,27 @@ export const competitionsApi = new Hono<{ Bindings: Bindings }>()
       joinCode: generateJoinCode(),
     };
     await db.insert(competitions).values(row).run();
-    return c.json(row, 201);
+
+    // Selectable league: copy the catalog's teams straight into a draw pool so
+    // the organiser doesn't hand-type 20 names — carrying crest/number across.
+    if (body.catalogLeagueId) {
+      const teams = await db.select().from(catalogTeams).where(eq(catalogTeams.catalogLeagueId, body.catalogLeagueId)).all();
+      if (teams.length > 0) {
+        const potId = newId("pot");
+        await db.insert(drawPots).values({ id: potId, competitionId: row.id, name: "Main pool", potType: "open" }).run();
+        for (const t of teams) {
+          await db.insert(potEntries).values({
+            id: newId("entry"),
+            drawPotId: potId,
+            teamOrDriverLabel: t.name,
+            crestUrl: t.crestUrl,
+            competitorNumber: t.competitorNumber,
+            externalRef: t.externalRef,
+            isDrawn: false,
+          }).run();
+        }
+      }
+    }
+
+    return c.json({ ...row, populatedFromCatalog: body.catalogLeagueId ?? null }, 201);
   });

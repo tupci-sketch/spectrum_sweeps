@@ -23,6 +23,11 @@ export const potEntries = sqliteTable("pot_entries", {
     .notNull()
     .references(() => drawPots.id),
   teamOrDriverLabel: text("team_or_driver_label").notNull(),
+  // Visual identity, copied from the catalog when populating from a selectable
+  // league: a crest URL (teams/nations) or a competitor number (motorsport).
+  crestUrl: text("crest_url"),
+  competitorNumber: integer("competitor_number"),
+  externalRef: text("external_ref"),
   seedOrder: integer("seed_order"),
   isDrawn: integer("is_drawn", { mode: "boolean" }).notNull().default(false),
 });

@@ -74,7 +74,10 @@ function UserChip() {
           <p className="text-xs text-muted">
             {user.accountType} · L{user.level}
           </p>
-          <button onClick={() => logout()} className="mt-1 text-xs text-brand hover:underline">Log out</button>
+          <div className="mt-1 flex gap-3">
+            <NavLink to={`/u/${user.id}`} className="text-xs text-brand hover:underline">Profile</NavLink>
+            <button onClick={() => logout()} className="text-xs text-brand hover:underline">Log out</button>
+          </div>
         </div>
       ) : (
         <NavLink to="/login" className="block rounded-lg bg-brand px-3 py-2 text-center text-sm font-medium text-white hover:bg-brand-hi">
@@ -96,8 +99,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
         <nav className="flex flex-1 flex-col gap-1 px-3">
           <NavItem to="/" icon={<IconTrophy />} label="Leagues" />
+          <NavItem to="/community" icon={<IconPoll />} label="Community" />
           <SoonItem icon={<IconWheel />} label="Spin Wheel" />
-          <SoonItem icon={<IconPoll />} label="Polls" />
           <NavItem to="/admin" icon={<IconShield />} label="Admin" />
         </nav>
         <UserChip />
@@ -149,8 +152,8 @@ function MobileNav() {
       {open && (
         <nav className="border-b border-border bg-surface px-3 py-3">
           <NavItem to="/" icon={<IconTrophy />} label="Leagues" />
+          <NavItem to="/community" icon={<IconPoll />} label="Community" />
           <SoonItem icon={<IconWheel />} label="Spin Wheel" />
-          <SoonItem icon={<IconPoll />} label="Polls" />
           <NavItem to="/admin" icon={<IconShield />} label="Admin" />
           <div className="mt-2 border-t border-border pt-3">
             {user ? (
