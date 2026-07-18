@@ -1,10 +1,11 @@
 import { Hono } from "hono";
 import { eq } from "drizzle-orm";
-import { participants } from "@spectrum-sweeps/db";
+import { participants, competitions } from "@spectrum-sweeps/db";
 import { newId } from "@spectrum-sweeps/shared";
 import { z } from "zod";
 import type { Bindings } from "./bindings";
 import { getDb } from "./db";
+import { countActiveParticipants } from "./competition-helpers";
 
 const createSchema = z.object({
   competitionId: z.string(),
@@ -29,6 +30,26 @@ export const participantsApi = new Hono<{ Bindings: Bindings }>()
   .post("/", async (c) => {
     const body = createSchema.parse(await c.req.json());
     const db = getDb(c.env);
+
+    const [competition] = await db
+      .select()
+      .from(competitions)
+      .where(eq(competitions.id, body.competitionId))
+      .all();
+    if (!competition) return c.json({ error: "competition not found" }, 404);
+
+    // Capacity gate: the sweepstake fills up to the season's team/driver count,
+    // then the draw is held. Reject joins once full. (D1 has no server-side
+    // transactions across statements, but at office scale this check-then-insert
+    // is adequate; the draw/run endpoint re-validates fullness before drawing.)
+    const activeCount = await countActiveParticipants(db, body.competitionId);
+    if (activeCount >= competition.targetEntryCount) {
+      return c.json(
+        { error: "competition is full", targetEntryCount: competition.targetEntryCount },
+        409,
+      );
+    }
+
     const row = {
       id: newId("prt"),
       competitionId: body.competitionId,

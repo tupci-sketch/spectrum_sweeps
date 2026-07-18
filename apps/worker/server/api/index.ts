@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import type { Bindings } from "./bindings";
+import { usersApi } from "./users";
 import { officeGroupsApi } from "./office-groups";
 import { leaguesApi } from "./leagues";
 import { sportsApi } from "./sports";
@@ -28,6 +29,7 @@ export const api = new Hono<{ Bindings: Bindings }>()
       allowHeaders: ["Content-Type"],
     }),
   )
+  .route("/admin/users", usersApi)
   .route("/admin/office-groups", officeGroupsApi)
   .route("/admin/leagues", leaguesApi)
   .route("/admin/sports", sportsApi)

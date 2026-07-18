@@ -26,7 +26,10 @@ export default function Home() {
 
   return (
     <main className="mx-auto max-w-3xl p-8">
-      <h1 className="text-2xl font-bold">Spectrum Sweepstakes</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Spectrum Sweepstakes</h1>
+        <Link to="/admin" className="text-sm text-sky-400 hover:underline">Admin →</Link>
+      </div>
       <p className="mt-1 text-slate-400">Office tournament tracker.</p>
 
       <section className="mt-8">
