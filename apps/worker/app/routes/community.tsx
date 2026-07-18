@@ -18,9 +18,82 @@ export default function Community() {
         <p className="text-muted">Polls and discussions for the office.</p>
       </header>
       {!user && <p className="rounded-lg bg-surface/60 p-3 text-sm text-muted">Log in to vote and post.</p>}
+      <MiniGames canManage={(user?.level ?? 0) >= 5} loggedIn={!!user} />
       <Polls canCreate={(user?.level ?? 0) >= 5} loggedIn={!!user} />
       <Discussions loggedIn={!!user} />
     </div>
+  );
+}
+
+interface MiniGame { id: string; name: string; status: string; question: string; options: string[]; correctIndex: number | null; pointsForCorrect: number; entryCount: number; mySelection: number | null; }
+
+function MiniGames({ canManage, loggedIn }: { canManage: boolean; loggedIn: boolean }) {
+  const { run, error, busy } = useSubmit();
+  const [games, setGames] = useState<MiniGame[]>([]);
+  const [name, setName] = useState("");
+  const [question, setQuestion] = useState("");
+  const [opts, setOpts] = useState("");
+  const load = () => apiGet<MiniGame[]>("/api/social/mini-games").then(setGames).catch(() => {});
+  useEffect(() => { load(); }, []);
+
+  return (
+    <Panel title="Mini-games — prediction pools">
+      {canManage && (
+        <form
+          className="mb-4 space-y-2 rounded-lg border border-border bg-surface-2/30 p-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            run(() => apiPost("/api/social/mini-games", { name, question, options: opts.split(",").map((o) => o.trim()).filter(Boolean), pointsForCorrect: 10 }),
+              () => { setName(""); setQuestion(""); setOpts(""); load(); });
+          }}
+        >
+          <p className="text-xs uppercase tracking-wide text-muted">New prediction</p>
+          <Field label="Name" value={name} onChange={(e) => setName(e.target.value)} required />
+          <Field label="Question" value={question} onChange={(e) => setQuestion(e.target.value)} required />
+          <Field label="Options (comma-separated)" value={opts} onChange={(e) => setOpts(e.target.value)} required placeholder="Man City, Arsenal, Liverpool" />
+          <Button disabled={busy}>Create prediction</Button>
+          <ErrorText>{error}</ErrorText>
+        </form>
+      )}
+      <ul className="space-y-3">
+        {games.map((g) => (
+          <li key={g.id} className="rounded-lg border border-border bg-surface-2/30 p-3">
+            <div className="flex items-center justify-between">
+              <p className="font-medium">{g.name} <span className="text-xs text-gold">+{g.pointsForCorrect} pts</span></p>
+              <span className="text-xs text-muted">{g.status} · {g.entryCount} in</span>
+            </div>
+            <p className="mt-1 text-sm text-slate-300">{g.question}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {g.options.map((opt, i) => {
+                const mine = g.mySelection === i;
+                const correct = g.correctIndex === i;
+                return (
+                  <button
+                    key={i}
+                    disabled={!loggedIn || g.status !== "open"}
+                    onClick={() => run(() => apiPost(`/api/social/mini-games/${g.id}/predict`, { selection: i }), load)}
+                    className={`rounded-full border px-3 py-1 text-sm ${correct ? "border-emerald-500 text-emerald-300" : mine ? "border-brand text-brand" : "border-border text-muted"} disabled:cursor-default`}
+                  >
+                    {correct ? "✓ " : mine ? "● " : ""}{opt}
+                  </button>
+                );
+              })}
+            </div>
+            {canManage && g.status === "open" && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted">
+                Resolve →
+                {g.options.map((opt, i) => (
+                  <button key={i} onClick={() => run(() => apiPost(`/api/social/mini-games/${g.id}/resolve`, { correctIndex: i }), load)} className="rounded border border-border px-2 py-0.5 hover:border-emerald-500">
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            )}
+          </li>
+        ))}
+        {games.length === 0 && <li className="text-muted">No prediction games yet.</li>}
+      </ul>
+    </Panel>
   );
 }
 

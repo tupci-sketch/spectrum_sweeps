@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLoaderData } from "react-router";
-import { apiGet, apiPost } from "../api-client";
+import { apiGet, apiPost, apiPatch } from "../api-client";
 import { Button, Card, ErrorText, Field, Select, useSubmit } from "../admin-ui";
 import { useAuth } from "../auth";
 import { AuthGate } from "../components/AuthGate";
@@ -13,6 +13,7 @@ interface Competition { id: string; name: string; formatType: string; status: st
 interface InviteCode { id: string; code: string; purpose: string; role: string; grantLevel: number; accountType: string; note: string | null; redeemedByUserId: string | null; }
 
 interface CatalogLeague { id: string; name: string; formatType: string; sportLabel: string; }
+interface Role { id: string; name: string; level: number; permissions: Record<string, boolean>; isSystem: boolean; }
 
 export async function clientLoader() {
   const [officeGroups, users, leagues, sports, competitions, catalog] = await Promise.all([
@@ -23,11 +24,14 @@ export async function clientLoader() {
     apiGet<Competition[]>("/api/admin/competitions"),
     apiGet<CatalogLeague[]>("/api/catalog"),
   ]);
-  // Invite codes are L5-gated; when logged out this 401s — swallow it so the
-  // loader stays usable and the AuthGate handles the sign-in prompt.
+  // These are level-gated; when logged out (or not owner) they 401/403 — swallow
+  // so the loader stays usable and the AuthGate/section-guards handle access.
   const invites = await apiGet<InviteCode[]>("/api/admin/invites").catch(() => [] as InviteCode[]);
-  return { officeGroups, users, leagues, sports, competitions, invites, catalog };
+  const roles = await apiGet<Role[]>("/api/admin/roles").catch(() => [] as Role[]);
+  return { officeGroups, users, leagues, sports, competitions, invites, catalog, roles };
 }
+
+const CAPS = ["organise", "runDraw", "generateCodes", "viewAudit", "moderate", "createPolls", "createMiniGames", "manageRoles"] as const;
 
 export default function Admin() {
   return (
@@ -38,9 +42,10 @@ export default function Admin() {
 }
 
 function AdminInner() {
-  const { officeGroups, users, leagues, sports, competitions, invites, catalog } = useLoaderData<typeof clientLoader>();
+  const { officeGroups, users, leagues, sports, competitions, invites, catalog, roles } = useLoaderData<typeof clientLoader>();
   const { user, logout } = useAuth();
   const admins = users.filter((u) => u.role === "admin" || u.role === "organiser");
+  const isOwner = (user?.level ?? 0) >= 7;
 
   return (
     <div className="mx-auto max-w-4xl px-5 py-8 lg:px-8 space-y-6">
@@ -55,7 +60,8 @@ function AdminInner() {
         <Link to="/" className="text-brand text-sm hover:underline">View public site →</Link>
       </header>
 
-      <InviteCodesCard invites={invites} isOwner={(user?.level ?? 0) >= 7} officeGroups={officeGroups} />
+      {isOwner && <RolesCard roles={roles} users={users} />}
+      <InviteCodesCard invites={invites} isOwner={isOwner} officeGroups={officeGroups} />
 
       {/* Building blocks — office group + organiser must exist before a league */}
       <div className="grid gap-4 sm:grid-cols-2">
@@ -232,6 +238,74 @@ function CompetitionCard({ competitions, leagues, sports, catalog }: { competiti
           <div className="sm:col-span-2"><Button disabled={busy}>Create competition</Button></div>
         </form>
       )}
+      <ErrorText>{error}</ErrorText>
+    </Card>
+  );
+}
+
+function RolesCard({ roles, users }: { roles: Role[]; users: User[] }) {
+  const { run, error, busy } = useSubmit();
+  const [assignUser, setAssignUser] = useState("");
+  const [assignRole, setAssignRole] = useState("");
+
+  return (
+    <Card title="Roles & permissions">
+      <p className="mb-3 text-sm text-muted">
+        Edit what each account type can do. Toggles take effect immediately.
+      </p>
+      <div className="space-y-3">
+        {roles.map((r) => (
+          <div key={r.id} className="rounded-lg border border-border bg-surface-2/30 p-3">
+            <div className="flex items-center justify-between">
+              <span className="font-medium capitalize">{r.name} {r.isSystem && <span className="text-[10px] text-faint">system</span>}</span>
+              <label className="flex items-center gap-1 text-xs text-muted">
+                Level
+                <input
+                  type="number" min={1} max={7} defaultValue={r.level}
+                  onBlur={(e) => run(() => apiPatch(`/api/admin/roles/${r.id}`, { level: Number(e.target.value) }))}
+                  className="w-14 rounded border border-border bg-surface px-1 py-0.5 text-ink"
+                />
+              </label>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+              {CAPS.map((cap) => (
+                <label key={cap} className="flex items-center gap-1.5 text-xs text-slate-300">
+                  <input
+                    type="checkbox"
+                    defaultChecked={r.permissions[cap] === true}
+                    onChange={(e) => run(() => apiPatch(`/api/admin/roles/${r.id}`, { permissions: { ...r.permissions, [cap]: e.target.checked } }))}
+                  />
+                  {cap}
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+        {roles.length === 0 && <p className="text-sm text-muted">No roles loaded.</p>}
+      </div>
+
+      <div className="mt-4 border-t border-border pt-3">
+        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">Assign a role to someone</p>
+        <form
+          className="flex flex-wrap items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const role = roles.find((x) => x.name === assignRole);
+            if (!role) return;
+            run(() => apiPatch(`/api/admin/roles/users/${assignUser}`, { accountType: role.name, level: role.level }));
+          }}
+        >
+          <Select label="Person" value={assignUser} onChange={(e) => setAssignUser(e.target.value)}>
+            <option value="">—</option>
+            {users.map((u) => <option key={u.id} value={u.id}>{u.nickname}</option>)}
+          </Select>
+          <Select label="Role" value={assignRole} onChange={(e) => setAssignRole(e.target.value)}>
+            <option value="">—</option>
+            {roles.map((r) => <option key={r.id} value={r.name}>{r.name} (L{r.level})</option>)}
+          </Select>
+          <Button disabled={busy || !assignUser || !assignRole}>Assign</Button>
+        </form>
+      </div>
       <ErrorText>{error}</ErrorText>
     </Card>
   );

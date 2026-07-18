@@ -2,7 +2,7 @@ import { writeFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { sportsCatalog } from "./sports-catalog";
-import { officeGroupsSeed, catalogLeagues } from "./catalog-data";
+import { officeGroupsSeed, accountTypesSeed, catalogLeagues } from "./catalog-data";
 
 // Generates seed/seed.sql from the TS catalogs. Apply it with:
 //   wrangler d1 execute spectrum-sweeps-db --local --file=packages/db/seed/seed.sql
@@ -24,6 +24,15 @@ for (const sport of sportsCatalog) {
     `INSERT INTO sports (id, name, format_type, scoring_config, icon, created_at) VALUES (` +
       `${s(sport.id)}, ${s(sport.name)}, ${s(sport.formatType)}, ${s(JSON.stringify(sport.scoringConfig))}, ${s(sport.icon)}, unixepoch()) ` +
       `ON CONFLICT (id) DO UPDATE SET name = excluded.name, scoring_config = excluded.scoring_config;`,
+  );
+}
+
+// Account types (editable roles)
+for (const at of accountTypesSeed) {
+  statements.push(
+    `INSERT INTO account_types (id, name, level, permissions, is_system, created_at) VALUES (` +
+      `${s(at.id)}, ${s(at.name)}, ${at.level}, ${s(JSON.stringify(at.permissions))}, ${at.isSystem ? 1 : 0}, unixepoch()) ` +
+      `ON CONFLICT (id) DO UPDATE SET level = excluded.level, permissions = excluded.permissions;`,
   );
 }
 

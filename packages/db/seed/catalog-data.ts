@@ -22,6 +22,17 @@ export const officeGroupsSeed = [
   { id: "og_customer_services", name: "Customer Services", description: "Corey's department." },
 ];
 
+// Default editable roles. Permissions are toggle-able by an owner in
+// housekeeping; these are just the starting points.
+export const accountTypesSeed = [
+  { id: "at_owner", name: "owner", level: 7, isSystem: true, permissions: { organise: true, runDraw: true, generateCodes: true, viewAudit: true, moderate: true, createPolls: true, createMiniGames: true, manageRoles: true } },
+  { id: "at_admin", name: "admin", level: 6, isSystem: true, permissions: { organise: true, runDraw: true, generateCodes: true, viewAudit: true, moderate: true, createPolls: true, createMiniGames: true, manageRoles: false } },
+  { id: "at_organiser", name: "organiser", level: 5, isSystem: true, permissions: { organise: true, runDraw: false, generateCodes: true, viewAudit: true, moderate: false, createPolls: true, createMiniGames: true, manageRoles: false } },
+  { id: "at_moderator", name: "moderator", level: 4, isSystem: true, permissions: { organise: false, runDraw: false, generateCodes: false, viewAudit: false, moderate: true, createPolls: true, createMiniGames: false, manageRoles: false } },
+  { id: "at_trader", name: "trader", level: 3, isSystem: true, permissions: { organise: false, runDraw: false, generateCodes: false, viewAudit: true, moderate: false, createPolls: false, createMiniGames: false, manageRoles: false } },
+  { id: "at_participant", name: "participant", level: 1, isSystem: true, permissions: { organise: false, runDraw: false, generateCodes: false, viewAudit: false, moderate: false, createPolls: false, createMiniGames: false, manageRoles: false } },
+];
+
 export const catalogLeagues: CatalogLeagueSeed[] = [
   {
     // Real 2026/27 top flight: 2025/26 relegated West Ham, Burnley, Wolves;

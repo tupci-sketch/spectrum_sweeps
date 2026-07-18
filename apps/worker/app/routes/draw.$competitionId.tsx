@@ -4,8 +4,9 @@ import { API_BASE, apiPost, apiErrorMessage } from "../api-client";
 import { useAuth } from "../auth";
 import { Panel, StatusPill } from "../components/ui";
 import { ChatBox } from "../components/ChatBox";
+import { SpinWheel, type WheelSegment } from "../components/SpinWheel";
 
-interface Reveal { participantId: string; nickname: string; team: string; crestUrl: string | null; competitorNumber: number | null; }
+interface Reveal { participantId: string; potEntryId: string; nickname: string; team: string; crestUrl: string | null; competitorNumber: number | null; }
 
 function Crest({ url, number, size = 24 }: { url: string | null; number: number | null; size?: number }) {
   if (url) return <img src={url} alt="" width={size} height={size} className="inline-block object-contain align-middle" />;
@@ -18,6 +19,7 @@ interface DrawStateResp {
   revealedCount: number;
   complete: boolean;
   reveals: Reveal[];
+  entries: WheelSegment[];
 }
 
 export default function DrawRoom() {
@@ -28,6 +30,9 @@ export default function DrawRoom() {
   const [busy, setBusy] = useState(false);
   const prevCount = useRef(0);
   const [flash, setFlash] = useState<Reveal | null>(null);
+  // Spin-wheel: bump the token + set the target whenever a new pick lands, so
+  // every watcher's wheel spins to the same team at ~the same moment.
+  const [wheel, setWheel] = useState<{ targetId: string | null; token: number }>({ targetId: null, token: 0 });
 
   const poll = useCallback(async () => {
     try {
@@ -35,9 +40,10 @@ export default function DrawRoom() {
       if (!res.ok) return;
       const data = (await res.json()) as DrawStateResp;
       setState(data);
-      // Flash the newest reveal when the count grows (everyone watching sees it).
       if (data.revealedCount > prevCount.current && data.reveals.length) {
-        setFlash(data.reveals[data.reveals.length - 1]);
+        const latest = data.reveals[data.reveals.length - 1];
+        setFlash(latest);
+        setWheel((w) => ({ targetId: latest.potEntryId, token: w.token + 1 }));
       }
       prevCount.current = data.revealedCount;
     } catch {
@@ -99,12 +105,17 @@ export default function DrawRoom() {
             )}
             {(c?.drawState === "live" || c?.drawState === "completed") && (
               <div>
+                {!state.complete && (
+                  <div className="mb-4">
+                    <SpinWheel segments={state.entries} targetId={wheel.targetId} spinToken={wheel.token} />
+                  </div>
+                )}
                 <div className="mb-4 text-center">
                   <p className="text-xs uppercase tracking-wide text-muted">
                     {state.complete ? "Draw complete" : `Pick ${state.revealedCount} of ${state.totalParticipants}`}
                   </p>
                   {flash && !state.complete && (
-                    <div className="mt-2 animate-pulse">
+                    <div className="mt-2">
                       <p className="text-2xl font-extrabold text-ink">{flash.nickname}</p>
                       <p className="flex items-center justify-center gap-2 text-lg text-gold">
                         drew <Crest url={flash.crestUrl} number={flash.competitorNumber} size={28} /> {flash.team}

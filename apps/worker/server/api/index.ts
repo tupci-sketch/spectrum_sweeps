@@ -3,6 +3,7 @@ import { cors } from "hono/cors";
 import type { AppEnv } from "./bindings";
 import { authApi } from "./auth";
 import { invitesApi } from "./invites";
+import { rolesApi } from "./roles";
 import { usersApi } from "./users";
 import { officeGroupsApi } from "./office-groups";
 import { leaguesApi } from "./leagues";
@@ -51,6 +52,7 @@ export const api = app
     await next();
   })
   .route("/auth", authApi)
+  .route("/admin/roles", rolesApi)
   .route("/admin/invites", invitesApi)
   .route("/admin/users", usersApi)
   .route("/admin/office-groups", officeGroupsApi)

@@ -75,11 +75,13 @@ export const chatMessages = sqliteTable("chat_messages", {
 
 export const miniGames = sqliteTable("mini_games", {
   id: text("id").primaryKey(),
-  leagueId: text("league_id")
-    .notNull()
-    .references(() => leagues.id),
+  // Nullable = a site-wide mini-game (e.g. a prediction pool).
+  leagueId: text("league_id").references(() => leagues.id),
   name: text("name").notNull(),
+  // { kind: "prediction", question, options: string[], pointsForCorrect,
+  //   correctIndex: number | null } — correctIndex set when resolved.
   config: text("config", { mode: "json" }).notNull().$type<Record<string, unknown>>(),
+  status: text("status").notNull().default("open"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
 });
 
@@ -93,6 +95,7 @@ export const miniGameEntries = sqliteTable(
     userId: text("user_id")
       .notNull()
       .references(() => users.id),
+    selection: integer("selection"),
     pointsAwarded: integer("points_awarded").notNull().default(0),
     createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
   },

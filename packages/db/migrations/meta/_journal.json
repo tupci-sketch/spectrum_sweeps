@@ -50,6 +50,13 @@
       "when": 1784386281711,
       "tag": "0006_futuristic_logan",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1784387390125,
+      "tag": "0007_lush_doctor_strange",
+      "breakpoints": true
     }
   ]
 }

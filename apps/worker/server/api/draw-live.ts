@@ -13,7 +13,7 @@ import { newId } from "@spectrum-sweeps/shared";
 import { z } from "zod";
 import type { AppEnv } from "./bindings";
 import { getDb } from "./db";
-import { requireLevel } from "../auth/middleware";
+import { requireLevel, requireCapability } from "../auth/middleware";
 import { generateSeed, seededShuffle, toHex, fromHex, commitHash } from "../draw/engine";
 
 // The scheduled live draw. A full competition is scheduled for a time; at that
@@ -60,7 +60,7 @@ export const drawLiveApi = new Hono<AppEnv>()
   })
   // Begin the live draw — fixes the random order and commits its hash before
   // any reveal. Owner-only (L7): "only L7 can run the spin".
-  .post("/start", requireLevel(7), async (c) => {
+  .post("/start", requireCapability("runDraw"), async (c) => {
     const { competitionId } = startSchema.parse(await c.req.json());
     const db = getDb(c.env);
     const actor = c.get("user")!;
@@ -107,7 +107,7 @@ export const drawLiveApi = new Hono<AppEnv>()
     return c.json({ ok: true, total: plan.p.length, commitHash: hash });
   })
   // Reveal the next allocation (L7). Idempotent-ish: reveals plan[revealedCount].
-  .post("/spin", requireLevel(7), async (c) => {
+  .post("/spin", requireCapability("runDraw"), async (c) => {
     const { competitionId } = spinSchema.parse(await c.req.json());
     const db = getDb(c.env);
     const actor = c.get("user")!;
@@ -228,6 +228,7 @@ export const drawLiveApi = new Hono<AppEnv>()
     // Reveal order is assignment insertion order (each spin appends one).
     const reveals = asn.map((a) => ({
       participantId: a.participantId,
+      potEntryId: a.potEntryId,
       nickname: nick.get(parts.find((p) => p.id === a.participantId)?.userId ?? "") ?? "Player",
       team: entryLabel.get(a.potEntryId) ?? "—",
       crestUrl: entryCrest.get(a.potEntryId) ?? null,
@@ -246,5 +247,7 @@ export const drawLiveApi = new Hono<AppEnv>()
       revealedCount: asn.length,
       complete: comp.drawState === "completed",
       reveals,
+      // Full pool for the spin-wheel segments.
+      entries: entries.map((e) => ({ id: e.id, label: e.teamOrDriverLabel, crestUrl: e.crestUrl, competitorNumber: e.competitorNumber })),
     });
   });
