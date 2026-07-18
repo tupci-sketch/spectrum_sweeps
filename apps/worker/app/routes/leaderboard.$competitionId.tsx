@@ -1,80 +1,128 @@
-import { useLoaderData } from "react-router";
-import type {
-  KnockoutRow,
-  SeasonLongRow,
-  StandingsRow as PointsRow,
-} from "../../server/scoring/types";
+import { Link, useLoaderData } from "react-router";
+import type { KnockoutRow, SeasonLongRow, StandingsRow as PointsRow } from "../../server/scoring/types";
 import type { Route } from "./+types/leaderboard.$competitionId";
 import { API_BASE, apiGet } from "../api-client";
+import { Panel, RankBadge, StatusPill, FormatTag } from "../components/ui";
 
-interface Competition {
-  id: string;
-  name: string;
-  formatType: "knockout" | "season_long" | "standings";
-}
-interface SnapshotRow {
-  snapshot: { rows: unknown[] };
-}
+interface Competition { id: string; name: string; formatType: "knockout" | "season_long" | "standings"; status: string; }
+interface Snapshot { snapshot: { rows: unknown[] }; }
+interface Participant { id: string; userId: string; }
+interface User { id: string; nickname: string; }
+interface Entry { id: string; teamOrDriverLabel: string; }
+interface Assignment { participantId: string; potEntryId: string; }
 
 export async function clientLoader({ params }: Route.ClientLoaderArgs) {
-  const competition = await apiGet<Competition>(`/api/admin/competitions/${params.competitionId}`);
-
-  // The leaderboard endpoint 404s when no results have been entered yet — that's
-  // a normal empty state, not an error, so don't let apiGet throw on it.
-  const res = await fetch(`${API_BASE}/api/leaderboard/${params.competitionId}`);
-  const snapshot = res.ok ? ((await res.json()) as SnapshotRow) : null;
-
-  return { competition, snapshot };
+  const id = params.competitionId;
+  const [competition, participants, users, entries, assignments] = await Promise.all([
+    apiGet<Competition>(`/api/admin/competitions/${id}`),
+    apiGet<Participant[]>(`/api/admin/participants?competitionId=${id}`),
+    apiGet<User[]>("/api/admin/users"),
+    apiGet<Entry[]>(`/api/admin/draw/entries?competitionId=${id}`),
+    apiGet<Assignment[]>(`/api/admin/draw/assignments?competitionId=${id}`),
+  ]);
+  // Empty leaderboard 404s before any result is entered — a normal empty state.
+  const res = await fetch(`${API_BASE}/api/leaderboard/${id}`);
+  const snapshot = res.ok ? ((await res.json()) as Snapshot) : null;
+  return { competition, snapshot, participants, users, entries, assignments };
 }
 
-export default function Leaderboard() {
-  const { competition, snapshot } = useLoaderData<typeof clientLoader>();
+interface DisplayRow { rank: number; name: string; sub: string; metric: string; highlight: boolean; dim: boolean; }
 
-  if (!snapshot) {
-    return (
-      <main className="mx-auto max-w-2xl p-8">
-        <h1 className="text-xl font-semibold">{competition.name}</h1>
-        <p className="mt-4 text-slate-500">No results entered yet.</p>
-      </main>
-    );
+export default function Leaderboard() {
+  const { competition, snapshot, participants, users, entries, assignments } = useLoaderData<typeof clientLoader>();
+
+  const nickOf = new Map(participants.map((p) => [p.id, users.find((u) => u.id === p.userId)?.nickname ?? "Player"]));
+  const teamOf = new Map<string, string>();
+  for (const a of assignments) {
+    teamOf.set(a.participantId, entries.find((e) => e.id === a.potEntryId)?.teamOrDriverLabel ?? "—");
+  }
+  const name = (pid: string) => nickOf.get(pid) ?? pid.slice(0, 8);
+  const team = (pid: string) => teamOf.get(pid) ?? "Awaiting draw";
+
+  let rows: DisplayRow[] = [];
+  if (snapshot) {
+    const raw = snapshot.snapshot.rows;
+    if (competition.formatType === "standings") {
+      rows = (raw as PointsRow[]).map((r) => ({
+        rank: r.rank, name: name(r.participantId), sub: team(r.participantId),
+        metric: `${r.points} pts`, highlight: r.rank === 1, dim: false,
+      }));
+    } else if (competition.formatType === "season_long") {
+      rows = [...(raw as SeasonLongRow[])]
+        .sort((a, b) => Number(b.isChampion) - Number(a.isChampion) || (a.leaguePosition ?? 99) - (b.leaguePosition ?? 99))
+        .map((r, i) => ({
+          rank: i + 1, name: name(r.participantId), sub: team(r.participantId),
+          metric: r.isChampion ? "🏆 Champion" : r.leaguePosition ? `Position ${r.leaguePosition}` : "—",
+          highlight: r.isChampion, dim: false,
+        }));
+    } else {
+      rows = [...(raw as KnockoutRow[])]
+        .sort((a, b) => b.points - a.points)
+        .map((r, i) => ({
+          rank: i + 1, name: name(r.participantId), sub: team(r.participantId),
+          metric: `${r.roundReached.replace(/_/g, " ")} · ${r.points} pts`,
+          highlight: r.roundReached === "winner", dim: r.eliminated,
+        }));
+    }
   }
 
-  const rows = snapshot.snapshot.rows;
-
   return (
-    <main className="mx-auto max-w-2xl p-8">
-      <h1 className="text-xl font-semibold">{competition.name}</h1>
-      <p className="text-slate-500">Format: {competition.formatType}</p>
+    <div className="mx-auto max-w-3xl px-5 py-8 lg:px-8">
+      <header className="mb-6 flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-sm text-muted">
+            <Link to="/" className="hover:text-ink">Leagues</Link><span>/</span>
+            <FormatTag formatType={competition.formatType} />
+          </div>
+          <h1 className="mt-1 text-3xl font-extrabold tracking-tight">{competition.name}</h1>
+        </div>
+        <StatusPill status={competition.status} />
+      </header>
 
-      <table className="mt-6 w-full text-left">
-        <tbody>
-          {competition.formatType === "knockout" &&
-            (rows as KnockoutRow[]).map((row) => (
-              <tr key={row.participantId} className="border-b border-slate-800">
-                <td className="py-2">{row.participantId}</td>
-                <td className="py-2 text-slate-400">{row.roundReached}</td>
-                <td className="py-2">{row.eliminated ? "Eliminated" : "Still in"}</td>
-                <td className="py-2 text-right">{row.points} pts</td>
-              </tr>
+      <Panel title="Leaderboard" icon={<BarsIcon />}>
+        {rows.length === 0 ? (
+          <p className="py-6 text-center text-muted">No results entered yet — the standings appear here as results come in.</p>
+        ) : (
+          <ul className="divide-y divide-border">
+            {rows.map((r) => (
+              <li
+                key={`${r.rank}-${r.name}`}
+                className={`flex items-center gap-3 py-2.5 ${r.dim ? "opacity-55" : ""}`}
+              >
+                <RankBadge rank={r.rank} />
+                <div className="min-w-0 flex-1">
+                  <p className={`truncate font-medium ${r.highlight ? "text-gold" : "text-ink"}`}>{r.name}</p>
+                  <p className="truncate text-xs text-muted">{r.sub}</p>
+                </div>
+                <span className={`shrink-0 text-sm font-semibold ${r.highlight ? "text-gold" : "text-ink"}`}>{r.metric}</span>
+              </li>
             ))}
-          {competition.formatType === "season_long" &&
-            (rows as SeasonLongRow[]).map((row) => (
-              <tr key={row.participantId} className="border-b border-slate-800">
-                <td className="py-2">{row.participantId}</td>
-                <td className="py-2 text-slate-400">{row.leaguePosition ?? "—"}</td>
-                <td className="py-2 text-right">{row.isChampion ? "Champion" : ""}</td>
-              </tr>
-            ))}
-          {competition.formatType === "standings" &&
-            (rows as PointsRow[]).map((row) => (
-              <tr key={row.participantId} className="border-b border-slate-800">
-                <td className="py-2">#{row.rank}</td>
-                <td className="py-2">{row.participantId}</td>
-                <td className="py-2 text-right">{row.points} pts</td>
-              </tr>
-            ))}
-        </tbody>
-      </table>
-    </main>
+          </ul>
+        )}
+      </Panel>
+
+      {/* Trust row — these are real properties of the draw engine, not marketing */}
+      <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <TrustTile title="Fair & random" body="Draws use cryptographic randomness — never a predictable shuffle." />
+        <TrustTile title="Transparent" body="Every draw is recorded with a pre-committed hash before the reveal." />
+        <TrustTile title="Verifiable" body="The published seed re-derives that hash, proving nothing was changed." />
+      </div>
+    </div>
+  );
+}
+
+function TrustTile({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface/50 p-4">
+      <p className="text-sm font-semibold text-brand">{title}</p>
+      <p className="mt-1 text-xs text-muted">{body}</p>
+    </div>
+  );
+}
+function BarsIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" />
+    </svg>
   );
 }

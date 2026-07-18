@@ -1,5 +1,6 @@
 import { Links, Meta, Outlet, Scripts, ScrollRestoration } from "react-router";
 import type { Route } from "./+types/root";
+import { AppShell } from "./components/AppShell";
 import "./app.css";
 
 export function Layout({ children }: { children: React.ReactNode }) {
@@ -12,7 +13,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         <Meta />
         <Links />
       </head>
-      <body className="min-h-screen bg-slate-950 text-slate-100">
+      <body className="min-h-screen bg-canvas text-ink antialiased">
         {children}
         <ScrollRestoration />
         <Scripts />
@@ -22,21 +23,29 @@ export function Layout({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  return <Outlet />;
+  return (
+    <AppShell>
+      <Outlet />
+    </AppShell>
+  );
 }
 
 // Required in SPA mode (ssr: false): shown during the initial client hydration
 // before any route's clientLoader has resolved.
 export function HydrateFallback() {
-  return <main className="mx-auto max-w-3xl p-8 text-slate-400">Loading…</main>;
+  return (
+    <div className="flex min-h-screen items-center justify-center text-muted">
+      <div className="animate-pulse text-sm tracking-wide">Loading Spectrum Sweepstakes…</div>
+    </div>
+  );
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
   const message = error instanceof Error ? error.message : "Unknown error";
   return (
-    <main className="p-8">
+    <div className="mx-auto max-w-lg p-8">
       <h1 className="text-xl font-semibold">Something went wrong</h1>
-      <p className="mt-2 text-slate-400">{message}</p>
-    </main>
+      <p className="mt-2 text-muted">{message}</p>
+    </div>
   );
 }

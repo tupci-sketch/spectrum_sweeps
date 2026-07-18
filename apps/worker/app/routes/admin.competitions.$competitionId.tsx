@@ -34,10 +34,10 @@ export default function CompetitionDetail() {
   const drawn = assignments.length > 0;
 
   return (
-    <main className="mx-auto max-w-4xl p-6 space-y-6">
+    <div className="mx-auto max-w-4xl px-5 py-8 lg:px-8 space-y-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">{competition.name}</h1>
+          <h1 className="text-3xl font-extrabold tracking-tight">{competition.name}</h1>
           <p className="text-sm text-slate-400">
             {competition.formatType} · status <span className="text-slate-200">{competition.status}</span> ·
             join code <span className="font-mono text-slate-200">{competition.joinCode}</span>
@@ -96,7 +96,7 @@ export default function CompetitionDetail() {
       {drawn && actor && (
         <ResultsCard competition={competition} entries={entries} actor={actor} />
       )}
-    </main>
+    </div>
   );
 }
 

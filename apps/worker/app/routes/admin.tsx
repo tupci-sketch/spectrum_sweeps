@@ -25,13 +25,13 @@ export default function Admin() {
   const admins = users.filter((u) => u.role === "admin" || u.role === "organiser");
 
   return (
-    <main className="mx-auto max-w-4xl p-6 space-y-6">
+    <div className="mx-auto max-w-4xl px-5 py-8 lg:px-8 space-y-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Admin</h1>
-          <p className="text-slate-400 text-sm">Set up leagues, competitions and run draws.</p>
+          <h1 className="text-3xl font-extrabold tracking-tight">Admin</h1>
+          <p className="text-muted text-sm">Set up leagues, competitions and run draws.</p>
         </div>
-        <Link to="/" className="text-sky-400 text-sm hover:underline">← Public site</Link>
+        <Link to="/" className="text-brand text-sm hover:underline">View public site →</Link>
       </header>
 
       {/* Building blocks — office group + organiser must exist before a league */}
@@ -42,7 +42,7 @@ export default function Admin() {
 
       <LeagueCard leagues={leagues} officeGroups={officeGroups} admins={admins} />
       <CompetitionCard competitions={competitions} leagues={leagues} sports={sports} />
-    </main>
+    </div>
   );
 }
 
