@@ -41,9 +41,10 @@ jobs:
         run: pnpm run build
         working-directory: apps/worker
         env:
-          # The Worker API URL. Defaults to the current workers.dev URL if the
-          # repo variable isn't set; override via Settings → Variables.
-          VITE_API_BASE_URL: ${{ vars.API_BASE_URL || 'https://spectrum-sweeps.relics62statues.workers.dev' }}
+          # The Worker API URL. Defaults to the custom API domain; override via
+          # repo Settings → Variables → API_BASE_URL (e.g. the *.workers.dev URL
+          # while the custom domain's nameservers are still propagating).
+          VITE_API_BASE_URL: ${{ vars.API_BASE_URL || 'https://api.spectrum-sweeps.co.uk' }}
           # Serve at the custom-domain root. If publishing to the default
           # <user>.github.io/spectrum_sweeps/ path instead, set repo variable
           # PAGES_BASE to "/spectrum_sweeps/".

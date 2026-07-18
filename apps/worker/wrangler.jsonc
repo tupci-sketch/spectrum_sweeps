@@ -4,6 +4,12 @@
   "main": "./workers/app.ts",
   "compatibility_date": "2026-01-01",
   "compatibility_flags": ["nodejs_compat"],
+  // API served on a custom domain (Cloudflare-managed cert) in addition to the
+  // default *.workers.dev URL. The custom domain activates once the zone's
+  // nameservers propagate; workers_dev is kept enabled so the API stays
+  // reachable in the meantime.
+  "workers_dev": true,
+  "routes": [{ "pattern": "api.spectrum-sweeps.co.uk", "custom_domain": true }],
   // Single environment for now. Separate staging/production Wrangler
   // environments (each with its own D1 database) are a later addition per the
   // plan doc, once there's real usage to protect.
