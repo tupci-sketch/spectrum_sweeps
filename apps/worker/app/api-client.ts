@@ -11,3 +11,42 @@ export async function apiGet<T>(path: string): Promise<T> {
   }
   return res.json() as Promise<T>;
 }
+
+export interface ApiError {
+  status: number;
+  body: unknown;
+}
+
+// Returns parsed JSON on success; throws an ApiError carrying the parsed error
+// body so admin forms can surface the API's message (e.g. "competition is full").
+async function send<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers: { "Content-Type": "application/json" },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const text = await res.text();
+  const parsed = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    throw { status: res.status, body: parsed } satisfies ApiError;
+  }
+  return parsed as T;
+}
+
+export function apiPost<T>(path: string, body?: unknown): Promise<T> {
+  return send<T>("POST", path, body);
+}
+
+export function apiPatch<T>(path: string, body?: unknown): Promise<T> {
+  return send<T>("PATCH", path, body);
+}
+
+export function apiErrorMessage(err: unknown, fallback = "Something went wrong"): string {
+  if (err && typeof err === "object" && "body" in err) {
+    const body = (err as ApiError).body;
+    if (body && typeof body === "object" && "error" in body) {
+      return String((body as { error: unknown }).error);
+    }
+  }
+  return fallback;
+}

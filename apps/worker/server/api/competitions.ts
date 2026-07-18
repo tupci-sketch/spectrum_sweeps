@@ -12,6 +12,7 @@ const createSchema = z.object({
   name: z.string().min(1),
   seasonStart: z.coerce.date(),
   seasonEnd: z.coerce.date(),
+  targetEntryCount: z.number().int().positive(),
 });
 
 function generateJoinCode() {
@@ -47,6 +48,7 @@ export const competitionsApi = new Hono<{ Bindings: Bindings }>()
       formatType: sport.formatType,
       seasonStart: body.seasonStart,
       seasonEnd: body.seasonEnd,
+      targetEntryCount: body.targetEntryCount,
       status: "draft" as const,
       joinCode: generateJoinCode(),
     };
