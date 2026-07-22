@@ -9,6 +9,7 @@ import { officeGroupsApi } from "./office-groups";
 import { leaguesApi } from "./leagues";
 import { sportsApi } from "./sports";
 import { competitionsApi } from "./competitions";
+import { sweepstakesApi } from "./sweepstakes";
 import { participantsApi } from "./participants";
 import { drawApi } from "./draw";
 import { drawLiveApi } from "./draw-live";
@@ -59,6 +60,7 @@ export const api = app
   .route("/admin/leagues", leaguesApi)
   .route("/admin/sports", sportsApi)
   .route("/admin/competitions", competitionsApi)
+  .route("/admin/sweepstakes", sweepstakesApi)
   .route("/admin/participants", participantsApi)
   .route("/admin/draw", drawApi)
   .route("/admin/results", resultsApi)

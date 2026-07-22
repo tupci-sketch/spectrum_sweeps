@@ -37,6 +37,9 @@ export const competitions = sqliteTable(
     targetEntryCount: integer("target_entry_count").notNull(),
     seasonStart: integer("season_start", { mode: "timestamp" }).notNull(),
     seasonEnd: integer("season_end", { mode: "timestamp" }).notNull(),
+    // What it costs to enter and how the pot pays out — per sweepstake.
+    stake: text("stake"),
+    prizePool: text("prize_pool"),
     status: text("status", { enum: competitionStatusValues }).notNull().default("draft"),
     // Scheduled live draw: admin sets drawScheduledAt; on "start" the full
     // random order is fixed by drawSeed and revealed one pick per "spin". The

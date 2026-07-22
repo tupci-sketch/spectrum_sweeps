@@ -41,7 +41,11 @@ function computeTable(
 export const catalogApi = new Hono<AppEnv>()
   .get("/", async (c) => {
     const db = getDb(c.env);
-    return c.json(await db.select().from(catalogLeagues).all());
+    const leagues = await db.select().from(catalogLeagues).all();
+    const teams = await db.select().from(catalogTeams).all();
+    const countByLeague = new Map<string, number>();
+    for (const t of teams) countByLeague.set(t.catalogLeagueId, (countByLeague.get(t.catalogLeagueId) ?? 0) + 1);
+    return c.json(leagues.map((l) => ({ ...l, teamCount: countByLeague.get(l.id) ?? 0 })));
   })
   .get("/:id", async (c) => {
     const db = getDb(c.env);

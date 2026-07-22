@@ -5,7 +5,7 @@ import { apiGet, apiPatch, apiPost, apiErrorMessage } from "../api-client";
 import { Button, Card, ErrorText, Field, Select, useSubmit } from "../admin-ui";
 import { useAuth } from "../auth";
 
-interface Competition { id: string; name: string; formatType: string; status: string; targetEntryCount: number; joinCode: string; drawState: string; drawScheduledAt: number | null; }
+interface Competition { id: string; name: string; formatType: string; status: string; targetEntryCount: number; joinCode: string; drawState: string; drawScheduledAt: number | null; stake: string | null; prizePool: string | null; }
 interface Participant { id: string; userId: string; paid: boolean; entryStatus: string; }
 interface User { id: string; nickname: string; email: string; role: string; }
 interface Entry { id: string; teamOrDriverLabel: string; isDrawn: boolean; drawPotId: string; }
@@ -40,10 +40,14 @@ export default function CompetitionDetail() {
     <div className="mx-auto max-w-4xl px-5 py-8 lg:px-8 space-y-6">
       <header className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-extrabold tracking-tight">{competition.name}</h1>
-          <p className="text-sm text-slate-400">
-            {competition.formatType} · status <span className="text-slate-200">{competition.status}</span> ·
-            join code <span className="font-mono text-slate-200">{competition.joinCode}</span>
+          <div className="text-xs text-muted"><Link to="/admin" className="hover:text-ink hover:underline">Admin</Link> / Sweepstake</div>
+          <h1 className="mt-1 text-3xl font-extrabold tracking-tight">{competition.name}</h1>
+          <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-slate-400">
+            <span>{competition.formatType.replace(/_/g, "-")}</span>
+            <span>· status <span className="text-slate-200">{competition.status}</span></span>
+            {competition.stake && <span className="rounded bg-surface-2 px-2 py-0.5 text-xs">stake {competition.stake}</span>}
+            {competition.prizePool && <span className="rounded bg-gold/10 px-2 py-0.5 text-xs text-gold">{competition.prizePool}</span>}
+            <span>· join code <span className="font-mono text-slate-200">{competition.joinCode}</span></span>
           </p>
         </div>
         <div className="text-right text-sm">

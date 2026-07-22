@@ -1,37 +1,32 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useLoaderData } from "react-router";
 import { apiGet, apiPost, apiPatch, apiDelete } from "../api-client";
 import { Button, Card, ErrorText, Field, Select, useSubmit } from "../admin-ui";
+import { FormatTag, StatusPill } from "../components/ui";
 import { useAuth } from "../auth";
 import { AuthGate } from "../components/AuthGate";
 
 interface OfficeGroup { id: string; name: string; }
 interface User { id: string; nickname: string; email: string; role: string; }
-interface League { id: string; name: string; status: string; officeGroupId: string; stake: string | null; prizePool: string | null; }
-interface Sport { id: string; name: string; formatType: string; }
-interface Competition { id: string; name: string; formatType: string; status: string; targetEntryCount: number; leagueId: string; }
 interface InviteCode { id: string; code: string; purpose: string; role: string; grantLevel: number; accountType: string; note: string | null; redeemedByUserId: string | null; }
-
-interface CatalogLeague { id: string; name: string; formatType: string; sportLabel: string; }
+interface CatalogEvent { id: string; name: string; formatType: string; sportLabel: string; season: string; teamCount: number; }
+interface Sweepstake { id: string; name: string; formatType: string; status: string; drawState: string; targetEntryCount: number; stake: string | null; prizePool: string | null; groupName: string | null; }
 interface Role { id: string; name: string; level: number; permissions: Record<string, boolean>; isSystem: boolean; }
 
 export async function clientLoader() {
-  const [officeGroups, users, leagues, sports, competitions, catalog] = await Promise.all([
+  const [officeGroups, users, catalog, sweepstakes] = await Promise.all([
     apiGet<OfficeGroup[]>("/api/admin/office-groups"),
     apiGet<User[]>("/api/admin/users"),
-    apiGet<League[]>("/api/admin/leagues"),
-    apiGet<Sport[]>("/api/admin/sports"),
-    apiGet<Competition[]>("/api/admin/competitions"),
-    apiGet<CatalogLeague[]>("/api/catalog"),
+    apiGet<CatalogEvent[]>("/api/catalog"),
+    apiGet<Sweepstake[]>("/api/admin/sweepstakes"),
   ]);
-  // These are level-gated; when logged out (or not owner) they 401/403 — swallow
-  // so the loader stays usable and the AuthGate/section-guards handle access.
   const invites = await apiGet<InviteCode[]>("/api/admin/invites").catch(() => [] as InviteCode[]);
   const roles = await apiGet<Role[]>("/api/admin/roles").catch(() => [] as Role[]);
-  return { officeGroups, users, leagues, sports, competitions, invites, catalog, roles };
+  return { officeGroups, users, catalog, sweepstakes, invites, roles };
 }
 
 const CAPS = ["organise", "runDraw", "generateCodes", "viewAudit", "moderate", "createPolls", "createMiniGames", "manageRoles"] as const;
+const FORMAT_LABEL: Record<string, string> = { knockout: "Knockout", season_long: "Season-long", standings: "Standings (points)" };
 
 export default function Admin() {
   return (
@@ -42,9 +37,8 @@ export default function Admin() {
 }
 
 function AdminInner() {
-  const { officeGroups, users, leagues, sports, competitions, invites, catalog, roles } = useLoaderData<typeof clientLoader>();
+  const { officeGroups, users, catalog, sweepstakes, invites, roles } = useLoaderData<typeof clientLoader>();
   const { user, logout } = useAuth();
-  const admins = users.filter((u) => u.role === "admin" || u.role === "organiser");
   const isOwner = (user?.level ?? 0) >= 7;
 
   return (
@@ -60,26 +54,201 @@ function AdminInner() {
         <Link to="/" className="text-brand text-sm hover:underline">View public site →</Link>
       </header>
 
-      {isOwner && <RolesCard roles={roles} users={users} />}
-      <InviteCodesCard invites={invites} isOwner={isOwner} officeGroups={officeGroups} />
+      {/* The main event: create + manage sweepstakes */}
+      <CreateSweepstakeCard catalog={catalog} officeGroups={officeGroups} />
+      <SweepstakesListCard sweepstakes={sweepstakes} />
 
-      {/* Building blocks — office group + organiser must exist before a league */}
-      <div className="grid gap-4 sm:grid-cols-2">
-        <OfficeGroupCard officeGroups={officeGroups} />
-        <UserCard users={users} officeGroups={officeGroups} />
-      </div>
-
-      <LeagueCard leagues={leagues} officeGroups={officeGroups} admins={admins} />
-      <CompetitionCard competitions={competitions} leagues={leagues} sports={sports} catalog={catalog} />
+      {/* Housekeeping */}
+      <details className="rounded-xl border border-border bg-surface/40" open>
+        <summary className="cursor-pointer px-5 py-3 text-sm font-semibold uppercase tracking-wide text-muted">
+          People &amp; access
+        </summary>
+        <div className="space-y-6 p-5 pt-0">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <UserCard users={users} officeGroups={officeGroups} />
+            <OfficeGroupCard officeGroups={officeGroups} />
+          </div>
+          <InviteCodesCard invites={invites} isOwner={isOwner} officeGroups={officeGroups} />
+          {isOwner && <RolesCard roles={roles} users={users} />}
+        </div>
+      </details>
     </div>
   );
 }
+
+// ---- Create a sweepstake — one guided form, interconnected dropdowns ----
+
+function CreateSweepstakeCard({ catalog, officeGroups }: { catalog: CatalogEvent[]; officeGroups: OfficeGroup[] }) {
+  const { run, error, busy } = useSubmit();
+  const [source, setSource] = useState(catalog[0]?.id ?? "custom"); // catalog id or "custom"
+  const [name, setName] = useState("");
+  const [officeGroupId, setOfficeGroupId] = useState(officeGroups[0]?.id ?? "");
+  const [format, setFormat] = useState("season_long");
+  const [target, setTarget] = useState("20");
+  const [stake, setStake] = useState("");
+  const [prizePool, setPrizePool] = useState("");
+
+  const chosen = useMemo(() => catalog.find((c) => c.id === source), [catalog, source]);
+  const isCustom = source === "custom";
+  // Suggested name follows the chosen event until the user types their own.
+  const effectiveName = name || (chosen ? chosen.name : "");
+  const effectiveFormat = isCustom ? format : (chosen?.formatType ?? "season_long");
+  const effectiveTarget = isCustom ? Number(target) : (chosen?.teamCount ?? 0);
+  const groupName = officeGroups.find((g) => g.id === officeGroupId)?.name ?? "—";
+  const ready = officeGroups.length > 0 && effectiveName.length >= 2 && effectiveTarget > 0;
+
+  function submit() {
+    const payload: Record<string, unknown> = {
+      name: effectiveName,
+      officeGroupId,
+      stake: stake || undefined,
+      prizePool: prizePool || undefined,
+    };
+    if (isCustom) {
+      payload.formatType = format;
+      payload.targetEntryCount = Number(target);
+    } else {
+      payload.catalogLeagueId = source;
+    }
+    run(() => apiPost("/api/admin/sweepstakes", payload), () => { setName(""); setStake(""); setPrizePool(""); });
+  }
+
+  return (
+    <Card title="Create a sweepstake">
+      {officeGroups.length === 0 ? (
+        <p className="text-sm text-amber-400">Add a group below first (People &amp; access).</p>
+      ) : (
+        <div className="grid gap-5 lg:grid-cols-[1fr_260px]">
+          <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); submit(); }}>
+            {/* 1. What are you running? */}
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gold">1 · What are you running?</p>
+              <Select label="Event" value={source} onChange={(e) => setSource(e.target.value)}>
+                {catalog.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} — {c.teamCount} {c.formatType === "standings" ? "drivers" : "teams"}, {FORMAT_LABEL[c.formatType] ?? c.formatType}
+                  </option>
+                ))}
+                <option value="custom">Custom event (add teams/drivers yourself)</option>
+              </Select>
+              {!isCustom && chosen && (
+                <p className="mt-1 text-xs text-emerald-400">
+                  ✓ {chosen.teamCount} {chosen.formatType === "standings" ? "drivers" : "teams"} added automatically from {chosen.season}.
+                </p>
+              )}
+              {isCustom && (
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <Select label="Format" value={format} onChange={(e) => setFormat(e.target.value)}>
+                    <option value="season_long">Season-long (whoever's team tops the table wins)</option>
+                    <option value="knockout">Knockout (last team standing wins)</option>
+                    <option value="standings">Standings (cumulative points, e.g. F1)</option>
+                  </Select>
+                  <Field label="How many entries?" type="number" min={2} max={200} value={target} onChange={(e) => setTarget(e.target.value)} />
+                </div>
+              )}
+            </div>
+
+            {/* 2. Name + who it's for */}
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gold">2 · Name &amp; group</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Field label="Sweepstake name" value={effectiveName} onChange={(e) => setName(e.target.value)} required placeholder="e.g. PL 26/27" />
+                <Select label="Who's it for?" value={officeGroupId} onChange={(e) => setOfficeGroupId(e.target.value)}>
+                  {officeGroups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                </Select>
+              </div>
+            </div>
+
+            {/* 3. Stake + prize */}
+            <div>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-gold">3 · Stake &amp; prize (optional)</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <Field label="Entry / stake" value={stake} onChange={(e) => setStake(e.target.value)} placeholder="e.g. £5" />
+                <Field label="Prize pool" value={prizePool} onChange={(e) => setPrizePool(e.target.value)} placeholder="e.g. Winner takes 80%" />
+              </div>
+            </div>
+
+            <Button disabled={busy || !ready}>{busy ? "Creating…" : "Create sweepstake"}</Button>
+            <ErrorText>{error}</ErrorText>
+          </form>
+
+          {/* Live preview */}
+          <aside className="rounded-xl border border-border bg-surface-2/40 p-4 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted">Preview</p>
+            <p className="mt-2 text-lg font-bold text-ink">{effectiveName || "Untitled sweepstake"}</p>
+            <dl className="mt-3 space-y-1.5 text-muted">
+              <PreviewRow k="Format" v={FORMAT_LABEL[effectiveFormat] ?? effectiveFormat} />
+              <PreviewRow k="Entries" v={effectiveTarget > 0 ? `${effectiveTarget} slots` : "—"} />
+              <PreviewRow k="Group" v={groupName} />
+              <PreviewRow k="Stake" v={stake || "—"} />
+              <PreviewRow k="Prize" v={prizePool || "—"} />
+              <PreviewRow k="Teams" v={isCustom ? "Added manually" : `${chosen?.teamCount ?? 0} auto-added`} />
+            </dl>
+          </aside>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function PreviewRow({ k, v }: { k: string; v: string }) {
+  return (
+    <div className="flex justify-between gap-2">
+      <dt>{k}</dt>
+      <dd className="text-right text-ink">{v}</dd>
+    </div>
+  );
+}
+
+function SweepstakesListCard({ sweepstakes }: { sweepstakes: Sweepstake[] }) {
+  const { run, busy } = useSubmit();
+  return (
+    <Card title={`Your sweepstakes (${sweepstakes.length})`}>
+      {sweepstakes.length === 0 ? (
+        <p className="text-sm text-muted">None yet — create one above.</p>
+      ) : (
+        <ul className="space-y-2">
+          {sweepstakes.map((s) => (
+            <li key={s.id} className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-2/30 p-3">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link to={`/admin/competitions/${s.id}`} className="font-semibold text-ink hover:text-brand">{s.name}</Link>
+                  <FormatTag formatType={s.formatType} />
+                  <StatusPill status={s.drawState === "live" ? "live" : s.status} />
+                </div>
+                <div className="mt-0.5 text-xs text-muted">
+                  {s.groupName ?? "—"} · {s.targetEntryCount} slots
+                  {s.stake ? ` · stake ${s.stake}` : ""}
+                  {s.prizePool ? ` · ${s.prizePool}` : ""}
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                <Link to={`/admin/competitions/${s.id}`} className="rounded-lg bg-brand px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-hi">
+                  Manage →
+                </Link>
+                <button
+                  onClick={() => { if (confirm(`Delete sweepstake "${s.name}"? This can't be undone.`)) run(() => apiDelete(`/api/admin/sweepstakes/${s.id}`)); }}
+                  disabled={busy}
+                  className="rounded px-2 py-1 text-xs text-red-400 hover:bg-red-500/10"
+                >
+                  Delete
+                </button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+// ---- People & access (unchanged behaviour) ----
 
 function OfficeGroupCard({ officeGroups }: { officeGroups: OfficeGroup[] }) {
   const { run, error, busy } = useSubmit();
   const [name, setName] = useState("");
   return (
-    <Card title="Office groups">
+    <Card title="Groups">
       <ul className="mb-3 space-y-1 text-sm text-slate-300">
         {officeGroups.map((g) => <li key={g.id}>{g.name}</li>)}
         {officeGroups.length === 0 && <li className="text-slate-500">None yet.</li>}
@@ -88,7 +257,7 @@ function OfficeGroupCard({ officeGroups }: { officeGroups: OfficeGroup[] }) {
         className="flex gap-2 items-end"
         onSubmit={(e) => { e.preventDefault(); run(() => apiPost("/api/admin/office-groups", { name }), () => setName("")); }}
       >
-        <div className="flex-1"><Field label="Name" value={name} onChange={(e) => setName(e.target.value)} required /></div>
+        <div className="flex-1"><Field label="New group" value={name} onChange={(e) => setName(e.target.value)} required placeholder="e.g. Marketing" /></div>
         <Button disabled={busy}>Add</Button>
       </form>
       <ErrorText>{error}</ErrorText>
@@ -100,7 +269,7 @@ function UserCard({ users, officeGroups }: { users: User[]; officeGroups: Office
   const { run, error, busy } = useSubmit();
   const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState("organiser");
+  const [role, setRole] = useState("participant");
   return (
     <Card title="People">
       <ul className="mb-3 space-y-1 text-sm text-slate-300 max-h-32 overflow-auto">
@@ -112,10 +281,7 @@ function UserCard({ users, officeGroups }: { users: User[]; officeGroups: Office
         onSubmit={(e) => {
           e.preventDefault();
           run(
-            () => apiPost("/api/admin/users", {
-              nickname, email, role,
-              officeGroupId: officeGroups[0]?.id,
-            }),
+            () => apiPost("/api/admin/users", { nickname, email, role, officeGroupId: officeGroups[0]?.id }),
             () => { setNickname(""); setEmail(""); },
           );
         }}
@@ -123,163 +289,13 @@ function UserCard({ users, officeGroups }: { users: User[]; officeGroups: Office
         <Field label="Nickname" value={nickname} onChange={(e) => setNickname(e.target.value)} required />
         <Field label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
         <Select label="Role" value={role} onChange={(e) => setRole(e.target.value)}>
+          <option value="participant">Participant</option>
           <option value="organiser">Organiser</option>
           <option value="admin">Admin</option>
           <option value="moderator">Moderator</option>
-          <option value="participant">Participant</option>
         </Select>
         <Button disabled={busy}>Add person</Button>
       </form>
-      <ErrorText>{error}</ErrorText>
-    </Card>
-  );
-}
-
-function LeagueCard({ leagues, officeGroups, admins }: { leagues: League[]; officeGroups: OfficeGroup[]; admins: User[] }) {
-  const { run, error, busy } = useSubmit();
-  const [name, setName] = useState("");
-  const [officeGroupId, setOfficeGroupId] = useState("");
-  const [stake, setStake] = useState("");
-  const [prizePool, setPrizePool] = useState("");
-  const groupName = new Map(officeGroups.map((g) => [g.id, g.name]));
-  const ready = officeGroups.length > 0 && admins.length > 0;
-  return (
-    <Card title="Leagues">
-      <ul className="mb-3 space-y-2 text-sm">
-        {leagues.map((l) => (
-          <li key={l.id} className="flex items-start justify-between border-b border-border py-1.5">
-            <div>
-              <span className="font-medium">{l.name}</span> <span className="text-slate-500">({l.status})</span>
-              <div className="text-xs text-muted">
-                {groupName.get(l.officeGroupId) ?? "—"}
-                {l.stake ? ` · stake ${l.stake}` : ""}
-                {l.prizePool ? ` · ${l.prizePool}` : ""}
-              </div>
-            </div>
-            <button
-              onClick={() => {
-                if (confirm(`Delete league "${l.name}" and all its competitions? This can't be undone.`)) {
-                  run(() => apiDelete(`/api/admin/leagues/${l.id}`));
-                }
-              }}
-              disabled={busy}
-              className="ml-2 shrink-0 rounded px-2 py-0.5 text-xs text-red-400 hover:bg-red-500/10"
-            >
-              Delete
-            </button>
-          </li>
-        ))}
-        {leagues.length === 0 && <li className="text-slate-500">None yet.</li>}
-      </ul>
-      {!ready && <p className="text-sm text-amber-400">Add an office group and at least one organiser/admin first.</p>}
-      {ready && (
-        <form
-          className="grid gap-2 sm:grid-cols-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            run(
-              () => apiPost("/api/admin/leagues", {
-                name,
-                officeGroupId: officeGroupId || officeGroups[0].id,
-                stake: stake || undefined,
-                prizePool: prizePool || undefined,
-                createdBy: admins[0].id,
-              }),
-              () => { setName(""); setStake(""); setPrizePool(""); },
-            );
-          }}
-        >
-          <Field label="League name (e.g. PL, NFL)" value={name} onChange={(e) => setName(e.target.value)} required />
-          <Select label="Group / scope" value={officeGroupId} onChange={(e) => setOfficeGroupId(e.target.value)}>
-            {officeGroups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-          </Select>
-          <Field label="Stake / entry (e.g. £5)" value={stake} onChange={(e) => setStake(e.target.value)} placeholder="optional" />
-          <Field label="Prize pool (e.g. Winner takes 80%)" value={prizePool} onChange={(e) => setPrizePool(e.target.value)} placeholder="optional" />
-          <div className="sm:col-span-2"><Button disabled={busy}>Create league</Button></div>
-        </form>
-      )}
-      <ErrorText>{error}</ErrorText>
-    </Card>
-  );
-}
-
-function CompetitionCard({ competitions, leagues, sports, catalog }: { competitions: Competition[]; leagues: League[]; sports: Sport[]; catalog: CatalogLeague[] }) {
-  const { run, error, busy } = useSubmit();
-  const [name, setName] = useState("");
-  const [leagueId, setLeagueId] = useState("");
-  const [sportId, setSportId] = useState("");
-  const [target, setTarget] = useState("20");
-  const [seasonStart, setSeasonStart] = useState("");
-  const [seasonEnd, setSeasonEnd] = useState("");
-  const [catalogLeagueId, setCatalogLeagueId] = useState("");
-  const ready = leagues.length > 0 && sports.length > 0;
-
-  return (
-    <Card title="Competitions">
-      <ul className="mb-3 space-y-1 text-sm">
-        {competitions.map((c) => (
-          <li key={c.id} className="flex items-center justify-between gap-2 border-b border-border py-1">
-            <span className="flex items-center gap-2">
-              <Link to={`/admin/competitions/${c.id}`} className="text-sky-400 hover:underline">{c.name}</Link>
-              <span className="text-slate-500">{c.formatType} · {c.status} · target {c.targetEntryCount}</span>
-            </span>
-            <button
-              onClick={() => {
-                if (confirm(`Delete competition "${c.name}" and its participants/draw? This can't be undone.`)) {
-                  run(() => apiDelete(`/api/admin/competitions/${c.id}`));
-                }
-              }}
-              disabled={busy}
-              className="shrink-0 rounded px-2 py-0.5 text-xs text-red-400 hover:bg-red-500/10"
-            >
-              Delete
-            </button>
-          </li>
-        ))}
-        {competitions.length === 0 && <li className="text-slate-500">None yet.</li>}
-      </ul>
-      {!ready && <p className="text-sm text-amber-400">Create a league first.</p>}
-      {ready && (
-        <form
-          className="grid gap-2 sm:grid-cols-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            run(
-              () => apiPost("/api/admin/competitions", {
-                name,
-                leagueId: leagueId || leagues[0].id,
-                sportId: sportId || sports[0].id,
-                targetEntryCount: Number(target),
-                seasonStart, seasonEnd,
-                catalogLeagueId: catalogLeagueId || undefined,
-              }),
-              () => setName(""),
-            );
-          }}
-        >
-          <Field label="Competition name" value={name} onChange={(e) => setName(e.target.value)} required />
-          <Field label="Target entries (teams/drivers)" type="number" min={1} value={target} onChange={(e) => setTarget(e.target.value)} required />
-          <Select label="League" value={leagueId} onChange={(e) => setLeagueId(e.target.value)}>
-            {leagues.map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}
-          </Select>
-          <Select label="Sport" value={sportId} onChange={(e) => setSportId(e.target.value)}>
-            {sports.map((s) => <option key={s.id} value={s.id}>{s.name} ({s.formatType})</option>)}
-          </Select>
-          {catalog.length > 0 && (
-            <Select
-              label="Populate teams from (optional)"
-              value={catalogLeagueId}
-              onChange={(e) => setCatalogLeagueId(e.target.value)}
-            >
-              <option value="">— none (add teams manually) —</option>
-              {catalog.map((cl) => <option key={cl.id} value={cl.id}>{cl.name}</option>)}
-            </Select>
-          )}
-          <Field label="Season start" type="date" value={seasonStart} onChange={(e) => setSeasonStart(e.target.value)} required />
-          <Field label="Season end" type="date" value={seasonEnd} onChange={(e) => setSeasonEnd(e.target.value)} required />
-          <div className="sm:col-span-2"><Button disabled={busy}>Create competition</Button></div>
-        </form>
-      )}
       <ErrorText>{error}</ErrorText>
     </Card>
   );
@@ -292,9 +308,7 @@ function RolesCard({ roles, users }: { roles: Role[]; users: User[] }) {
 
   return (
     <Card title="Roles & permissions">
-      <p className="mb-3 text-sm text-muted">
-        Edit what each account type can do. Toggles take effect immediately.
-      </p>
+      <p className="mb-3 text-sm text-muted">Edit what each account type can do. Toggles take effect immediately.</p>
       <div className="space-y-3">
         {roles.map((r) => (
           <div key={r.id} className="rounded-lg border border-border bg-surface-2/30 p-3">
@@ -368,7 +382,7 @@ function InviteCodesCard({
     <Card title="Invite codes">
       <p className="mb-3 text-sm text-muted">
         Generate a one-time code so someone can register. Owners can also issue{" "}
-        <span className="text-gold">organiser grants</span> that let an organiser run their own league.
+        <span className="text-gold">organiser grants</span> that let an organiser run their own sweepstakes.
       </p>
 
       <form
@@ -413,11 +427,7 @@ function InviteCodesCard({
           <ul className="mt-1 space-y-1 text-sm">
             {available.map((i) => (
               <li key={i.id} className="flex items-center justify-between border-b border-border py-1">
-                <button
-                  className="font-mono text-gold hover:underline"
-                  onClick={() => navigator.clipboard?.writeText(i.code)}
-                  title="Copy"
-                >
+                <button className="font-mono text-gold hover:underline" onClick={() => navigator.clipboard?.writeText(i.code)} title="Copy">
                   {i.code}
                 </button>
                 <span className="text-xs text-muted">

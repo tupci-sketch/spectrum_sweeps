@@ -88,7 +88,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <NavLink to="/"><BrandWordmark /></NavLink>
         </div>
         <nav className="flex flex-1 flex-col gap-1 px-3">
-          <NavItem to="/" icon={<IconTrophy />} label="Leagues" />
+          <NavItem to="/" icon={<IconTrophy />} label="Sweepstakes" />
           <NavItem to="/community" icon={<IconPoll />} label="Community" />
           <NavItem to="/draws" icon={<IconWheel />} label="Spin Wheel" />
           <NavItem to="/admin" icon={<IconShield />} label="Admin" />
@@ -141,7 +141,7 @@ function MobileNav() {
 
       {open && (
         <nav className="border-b border-border bg-surface px-3 py-3">
-          <NavItem to="/" icon={<IconTrophy />} label="Leagues" />
+          <NavItem to="/" icon={<IconTrophy />} label="Sweepstakes" />
           <NavItem to="/community" icon={<IconPoll />} label="Community" />
           <NavItem to="/draws" icon={<IconWheel />} label="Spin Wheel" />
           <NavItem to="/admin" icon={<IconShield />} label="Admin" />

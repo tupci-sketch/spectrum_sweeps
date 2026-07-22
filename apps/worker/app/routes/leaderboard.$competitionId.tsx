@@ -66,22 +66,49 @@ export default function Leaderboard() {
     }
   }
 
+  // The draw roster: who holds which team/driver. This is the sweepstake's
+  // state the moment the draw finishes, before any match result exists.
+  const roster = assignments
+    .map((a) => ({ name: name(a.participantId), team: team(a.participantId) }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
   return (
     <div className="mx-auto max-w-3xl px-5 py-8 lg:px-8">
       <header className="mb-6 flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm text-muted">
-            <Link to="/" className="hover:text-ink">Leagues</Link><span>/</span>
+            <Link to="/" className="hover:text-ink">Sweepstakes</Link><span>/</span>
             <FormatTag formatType={competition.formatType} />
           </div>
           <h1 className="mt-1 text-3xl font-extrabold tracking-tight">{competition.name}</h1>
         </div>
-        <StatusPill status={competition.status} />
+        <div className="flex flex-col items-end gap-1">
+          <StatusPill status={competition.status} />
+          <Link to={`/draw/${competition.id}`} className="text-xs text-brand hover:underline">Draw room →</Link>
+        </div>
       </header>
+
+      {/* Draw roster — always shown once teams are allocated. */}
+      {roster.length > 0 && (
+        <Panel title={rows.length > 0 ? "Who's who" : "The draw — who got what"} icon={<BarsIcon />} className="mb-6">
+          <ul className="grid gap-x-6 gap-y-1 sm:grid-cols-2">
+            {roster.map((r) => (
+              <li key={r.name} className="flex items-center justify-between border-b border-border/60 py-1.5 text-sm">
+                <span className="font-medium text-ink">{r.name}</span>
+                <span className="text-gold">{r.team}</span>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      )}
 
       <Panel title="Leaderboard" icon={<BarsIcon />}>
         {rows.length === 0 ? (
-          <p className="py-6 text-center text-muted">No results entered yet — the standings appear here as results come in.</p>
+          <p className="py-6 text-center text-muted">
+            {roster.length > 0
+              ? "Teams are drawn — standings will appear here as match results are entered."
+              : "The draw hasn't happened yet. Once it does, who's got which team shows here."}
+          </p>
         ) : (
           <ul className="divide-y divide-border">
             {rows.map((r) => (
