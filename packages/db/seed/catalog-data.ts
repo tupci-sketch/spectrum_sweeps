@@ -19,7 +19,11 @@ export interface CatalogLeagueSeed {
 }
 
 export const officeGroupsSeed = [
-  { id: "og_customer_services", name: "Customer Services", description: "Corey's department." },
+  { id: "og_customer_services", name: "Customer Services", description: "The CS department." },
+  { id: "og_inter_office", name: "Inter-office (all departments)", description: "Open to everyone across the office." },
+  { id: "og_trade", name: "Trading", description: "The Trading department." },
+  { id: "og_security", name: "Security", description: "The Security department." },
+  { id: "og_hr", name: "HR / People", description: "The HR / People department." },
 ];
 
 // Default editable roles. Permissions are toggle-able by an owner in

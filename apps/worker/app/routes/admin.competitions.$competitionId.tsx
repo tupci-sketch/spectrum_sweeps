@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Link, useLoaderData } from "react-router";
+import { Link, useLoaderData, useNavigate } from "react-router";
 import type { Route } from "./+types/admin.competitions.$competitionId";
-import { apiGet, apiPatch, apiPost } from "../api-client";
+import { apiGet, apiPatch, apiPost, apiErrorMessage } from "../api-client";
 import { Button, Card, ErrorText, Field, Select, useSubmit } from "../admin-ui";
+import { useAuth } from "../auth";
 
 interface Competition { id: string; name: string; formatType: string; status: string; targetEntryCount: number; joinCode: string; drawState: string; drawScheduledAt: number | null; }
 interface Participant { id: string; userId: string; paid: boolean; entryStatus: string; }
@@ -32,6 +33,8 @@ export default function CompetitionDetail() {
   const activeParticipants = participants.filter((p) => p.entryStatus === "active");
   const full = activeParticipants.length === competition.targetEntryCount;
   const drawn = assignments.length > 0;
+  const takenUserIds = new Set(activeParticipants.map((p) => p.userId));
+  const addableUsers = users.filter((u) => !takenUserIds.has(u.id));
 
   return (
     <div className="mx-auto max-w-4xl px-5 py-8 lg:px-8 space-y-6">
@@ -61,6 +64,7 @@ export default function CompetitionDetail() {
           competition={competition}
           participants={activeParticipants}
           userById={userById}
+          addableUsers={addableUsers}
           actor={actor}
           drawn={drawn}
         />
@@ -101,17 +105,20 @@ export default function CompetitionDetail() {
 }
 
 function ParticipantsCard({
-  competition, participants, userById, actor, drawn,
+  competition, participants, userById, addableUsers, actor, drawn,
 }: {
   competition: Competition;
   participants: Participant[];
   userById: Map<string, User>;
+  addableUsers: User[];
   actor: User | undefined;
   drawn: boolean;
 }) {
   const { run, error, busy } = useSubmit();
   const [nickname, setNickname] = useState("");
   const [email, setEmail] = useState("");
+  const [existingId, setExistingId] = useState("");
+  const [mode, setMode] = useState<"existing" | "new">(addableUsers.length > 0 ? "existing" : "new");
   const remaining = competition.targetEntryCount - participants.length;
 
   return (
@@ -134,21 +141,67 @@ function ParticipantsCard({
       ) : remaining <= 0 ? (
         <p className="text-sm text-emerald-400">Full — ready to draw.</p>
       ) : (
-        <form
-          className="space-y-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            run(async () => {
-              const user = await apiPost<User>("/api/admin/users", { nickname, email, role: "participant" });
-              await apiPost("/api/admin/participants", { competitionId: competition.id, userId: user.id });
-            }, () => { setNickname(""); setEmail(""); });
-          }}
-        >
-          <p className="text-xs text-slate-500">{remaining} place{remaining === 1 ? "" : "s"} left</p>
-          <Field label="Nickname" value={nickname} onChange={(e) => setNickname(e.target.value)} required disabled={!actor} />
-          <Field label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={!actor} />
-          <Button disabled={busy || !actor}>Add participant</Button>
-        </form>
+        <>
+          <div className="mb-2 flex gap-1 text-xs">
+            <button
+              type="button"
+              onClick={() => setMode("existing")}
+              className={`rounded px-2 py-1 ${mode === "existing" ? "bg-brand text-white" : "bg-surface-2 text-muted"}`}
+            >
+              Existing account
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode("new")}
+              className={`rounded px-2 py-1 ${mode === "new" ? "bg-brand text-white" : "bg-surface-2 text-muted"}`}
+            >
+              Quick-add new
+            </button>
+          </div>
+          <p className="mb-2 text-xs text-slate-500">{remaining} place{remaining === 1 ? "" : "s"} left</p>
+
+          {mode === "existing" ? (
+            <form
+              className="flex items-end gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!existingId) return;
+                run(
+                  () => apiPost("/api/admin/participants", { competitionId: competition.id, userId: existingId }),
+                  () => setExistingId(""),
+                );
+              }}
+            >
+              <div className="flex-1">
+                <Select label="Account" value={existingId} onChange={(e) => setExistingId(e.target.value)}>
+                  <option value="">— pick a person —</option>
+                  {addableUsers.map((u) => (
+                    <option key={u.id} value={u.id}>{u.nickname} ({u.role})</option>
+                  ))}
+                </Select>
+              </div>
+              <Button disabled={busy || !existingId}>Enter</Button>
+            </form>
+          ) : (
+            <form
+              className="space-y-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                run(async () => {
+                  const user = await apiPost<User>("/api/admin/users", { nickname, email, role: "participant" });
+                  await apiPost("/api/admin/participants", { competitionId: competition.id, userId: user.id });
+                }, () => { setNickname(""); setEmail(""); });
+              }}
+            >
+              <Field label="Nickname" value={nickname} onChange={(e) => setNickname(e.target.value)} required disabled={!actor} />
+              <Field label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={!actor} />
+              <Button disabled={busy || !actor}>Add participant</Button>
+            </form>
+          )}
+          {mode === "existing" && addableUsers.length === 0 && (
+            <p className="text-xs text-slate-500">Everyone's already entered — use quick-add for new people.</p>
+          )}
+        </>
       )}
       <ErrorText>{error}</ErrorText>
     </Card>
@@ -223,10 +276,29 @@ function DrawCard({
   drawn: boolean;
 }) {
   const { run, error, busy } = useSubmit();
+  const navigate = useNavigate();
+  const { user } = useAuth();
   const [when, setWhen] = useState("");
+  const [startErr, setStartErr] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
   const enoughEntries = availableEntries >= participantCount && participantCount > 0;
-  const ready = full && enoughEntries && !!actor;
+  // Force-run: the draw needs at least one entrant and a team/driver for each —
+  // it does NOT need to be exactly full. (Full is the ideal, not a hard block.)
+  const canRun = enoughEntries && !!actor;
+  const isOwner = (user?.level ?? 0) >= 7;
   const ds = competition.drawState;
+
+  async function startNow() {
+    setStarting(true);
+    setStartErr(null);
+    try {
+      await apiPost("/api/draw/start", { competitionId: competition.id });
+      navigate(`/draw/${competition.id}`);
+    } catch (err) {
+      setStartErr(apiErrorMessage(err));
+      setStarting(false);
+    }
+  }
 
   return (
     <Card title="The draw">
@@ -245,38 +317,65 @@ function DrawCard({
           <Link to={`/draw/${competition.id}`} className="mt-2 inline-block rounded-lg bg-brand px-4 py-2 font-medium text-white hover:bg-brand-hi">
             Open draw room →
           </Link>
-          <p className="mt-2 text-xs text-muted">Everyone entered opens this room; an owner (L7) runs the spin live.</p>
+          <p className="mt-2 text-xs text-muted">Everyone entered opens this room; an owner (L7) runs the spin.</p>
         </div>
       ) : (
         <>
           <p className="text-sm text-muted">
-            Schedule the draw for a date/time. Entrants gather in the draw room and an owner reveals each pick live.
+            Run the draw now and spin each pick live, or schedule it for a date/time so everyone can gather in the draw room.
           </p>
           <ul className="mt-2 text-sm">
             <li className={full ? "text-emerald-400" : "text-muted"}>
-              {full ? "✓" : "•"} Participants: {participantCount}/{competition.targetEntryCount}
+              {full ? "✓" : "•"} Participants: {participantCount}/{competition.targetEntryCount}{!full && participantCount > 0 ? " (not full — you can still force the draw)" : ""}
             </li>
-            <li className={enoughEntries ? "text-emerald-400" : "text-muted"}>
-              {enoughEntries ? "✓" : "•"} Teams/drivers available: {availableEntries} (need ≥ {participantCount})
+            <li className={enoughEntries ? "text-emerald-400" : "text-amber-400"}>
+              {enoughEntries ? "✓" : "✕"} Teams/drivers available: {availableEntries} (need ≥ {participantCount || 1})
             </li>
           </ul>
-          {ready && (
-            <form
-              className="mt-3 flex flex-wrap items-end gap-2"
-              onSubmit={(e) => { e.preventDefault(); run(() => apiPost(`/api/draw/competitions/${competition.id}/schedule`, { scheduledAt: when })); }}
-            >
-              <label className="text-sm">
-                <span className="text-muted">Draw date &amp; time</span>
-                <input
-                  type="datetime-local"
-                  value={when}
-                  onChange={(e) => setWhen(e.target.value)}
-                  required
-                  className="mt-1 block rounded-lg border border-border bg-surface-2 px-2 py-1.5 text-ink focus:border-brand focus:outline-none"
-                />
-              </label>
-              <Button disabled={busy}>Schedule draw</Button>
-            </form>
+
+          {!canRun && (
+            <p className="mt-2 text-sm text-amber-400">
+              {participantCount === 0
+                ? "Add at least one participant to run the draw."
+                : `Add ${participantCount - availableEntries} more team${participantCount - availableEntries === 1 ? "" : "s"}/driver${participantCount - availableEntries === 1 ? "" : "s"} so every entrant can be drawn.`}
+            </p>
+          )}
+
+          {canRun && (
+            <div className="mt-4 space-y-4">
+              <div>
+                <button
+                  onClick={startNow}
+                  disabled={starting || !isOwner}
+                  className="rounded-lg bg-brand px-5 py-2.5 font-semibold text-white hover:bg-brand-hi disabled:opacity-50"
+                >
+                  {starting ? "Starting…" : "Start the draw now →"}
+                </button>
+                <p className="mt-1 text-xs text-muted">
+                  {isOwner
+                    ? "Goes live immediately and opens the draw room, where you spin each pick."
+                    : "Only an owner (L7) can run the spin."}
+                </p>
+                {startErr && <p className="mt-1 text-sm text-red-400">{startErr}</p>}
+              </div>
+
+              <form
+                className="flex flex-wrap items-end gap-2 border-t border-border pt-3"
+                onSubmit={(e) => { e.preventDefault(); run(() => apiPost(`/api/draw/competitions/${competition.id}/schedule`, { scheduledAt: when })); }}
+              >
+                <label className="text-sm">
+                  <span className="text-muted">Or schedule for later</span>
+                  <input
+                    type="datetime-local"
+                    value={when}
+                    onChange={(e) => setWhen(e.target.value)}
+                    required
+                    className="mt-1 block rounded-lg border border-border bg-surface-2 px-2 py-1.5 text-ink focus:border-brand focus:outline-none"
+                  />
+                </label>
+                <Button disabled={busy}>Schedule</Button>
+              </form>
+            </div>
           )}
         </>
       )}

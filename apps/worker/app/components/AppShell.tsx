@@ -53,16 +53,6 @@ function NavItem({ to, icon, label }: { to: string; icon: ReactNode; label: stri
   );
 }
 
-function SoonItem({ icon, label }: { icon: ReactNode; label: string }) {
-  return (
-    <div className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-faint" title="Coming soon">
-      {icon}
-      <span>{label}</span>
-      <span className="ml-auto rounded bg-surface-2 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-faint">soon</span>
-    </div>
-  );
-}
-
 function UserChip() {
   const { user, loading, logout } = useAuth();
   if (loading) return null;
@@ -100,7 +90,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <nav className="flex flex-1 flex-col gap-1 px-3">
           <NavItem to="/" icon={<IconTrophy />} label="Leagues" />
           <NavItem to="/community" icon={<IconPoll />} label="Community" />
-          <SoonItem icon={<IconWheel />} label="Spin Wheel" />
+          <NavItem to="/draws" icon={<IconWheel />} label="Spin Wheel" />
           <NavItem to="/admin" icon={<IconShield />} label="Admin" />
         </nav>
         <UserChip />
@@ -153,7 +143,7 @@ function MobileNav() {
         <nav className="border-b border-border bg-surface px-3 py-3">
           <NavItem to="/" icon={<IconTrophy />} label="Leagues" />
           <NavItem to="/community" icon={<IconPoll />} label="Community" />
-          <SoonItem icon={<IconWheel />} label="Spin Wheel" />
+          <NavItem to="/draws" icon={<IconWheel />} label="Spin Wheel" />
           <NavItem to="/admin" icon={<IconShield />} label="Admin" />
           <div className="mt-2 border-t border-border pt-3">
             {user ? (

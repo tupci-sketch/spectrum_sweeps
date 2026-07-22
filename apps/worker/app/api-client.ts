@@ -61,6 +61,10 @@ export function apiPatch<T>(path: string, body?: unknown): Promise<T> {
   return send<T>("PATCH", path, body);
 }
 
+export function apiDelete<T>(path: string): Promise<T> {
+  return send<T>("DELETE", path);
+}
+
 export function apiErrorMessage(err: unknown, fallback = "Something went wrong"): string {
   if (err && typeof err === "object" && "body" in err) {
     const body = (err as ApiError).body;

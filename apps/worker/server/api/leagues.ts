@@ -5,11 +5,14 @@ import { newId } from "@spectrum-sweeps/shared";
 import { z } from "zod";
 import type { Bindings } from "./bindings";
 import { getDb } from "./db";
+import { deleteLeagueCascade } from "./cascade";
 
 const createSchema = z.object({
   officeGroupId: z.string(),
   name: z.string().min(1),
   description: z.string().optional(),
+  stake: z.string().optional(),
+  prizePool: z.string().optional(),
   createdBy: z.string(),
 });
 
@@ -34,4 +37,9 @@ export const leaguesApi = new Hono<{ Bindings: Bindings }>()
     const db = getDb(c.env);
     await db.update(leagues).set({ status }).where(eq(leagues.id, c.req.param("id"))).run();
     return c.json({ id: c.req.param("id"), status });
+  })
+  .delete("/:id", async (c) => {
+    const db = getDb(c.env);
+    await deleteLeagueCascade(db, c.req.param("id"));
+    return c.json({ ok: true });
   });

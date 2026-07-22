@@ -5,6 +5,7 @@ import { newId } from "@spectrum-sweeps/shared";
 import { z } from "zod";
 import type { AppEnv } from "./bindings";
 import { getDb } from "./db";
+import { deleteCompetitionCascade } from "./cascade";
 
 const createSchema = z.object({
   leagueId: z.string(),
@@ -78,4 +79,9 @@ export const competitionsApi = new Hono<AppEnv>()
     }
 
     return c.json({ ...row, populatedFromCatalog: body.catalogLeagueId ?? null }, 201);
+  })
+  .delete("/:id", async (c) => {
+    const db = getDb(c.env);
+    await deleteCompetitionCascade(db, c.req.param("id"));
+    return c.json({ ok: true });
   });

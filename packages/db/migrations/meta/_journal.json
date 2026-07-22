@@ -57,6 +57,13 @@
       "when": 1784387390125,
       "tag": "0007_lush_doctor_strange",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1784723014335,
+      "tag": "0008_legal_big_bertha",
+      "breakpoints": true
     }
   ]
 }

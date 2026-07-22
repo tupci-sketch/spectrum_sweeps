@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { Link, useLoaderData } from "react-router";
-import { apiGet, apiPost, apiPatch } from "../api-client";
+import { apiGet, apiPost, apiPatch, apiDelete } from "../api-client";
 import { Button, Card, ErrorText, Field, Select, useSubmit } from "../admin-ui";
 import { useAuth } from "../auth";
 import { AuthGate } from "../components/AuthGate";
 
 interface OfficeGroup { id: string; name: string; }
 interface User { id: string; nickname: string; email: string; role: string; }
-interface League { id: string; name: string; status: string; officeGroupId: string; }
+interface League { id: string; name: string; status: string; officeGroupId: string; stake: string | null; prizePool: string | null; }
 interface Sport { id: string; name: string; formatType: string; }
 interface Competition { id: string; name: string; formatType: string; status: string; targetEntryCount: number; leagueId: string; }
 interface InviteCode { id: string; code: string; purpose: string; role: string; grantLevel: number; accountType: string; note: string | null; redeemedByUserId: string | null; }
@@ -139,34 +139,63 @@ function LeagueCard({ leagues, officeGroups, admins }: { leagues: League[]; offi
   const { run, error, busy } = useSubmit();
   const [name, setName] = useState("");
   const [officeGroupId, setOfficeGroupId] = useState("");
+  const [stake, setStake] = useState("");
+  const [prizePool, setPrizePool] = useState("");
+  const groupName = new Map(officeGroups.map((g) => [g.id, g.name]));
   const ready = officeGroups.length > 0 && admins.length > 0;
   return (
     <Card title="Leagues">
-      <ul className="mb-3 space-y-1 text-sm text-slate-300">
-        {leagues.map((l) => <li key={l.id}>{l.name} <span className="text-slate-500">({l.status})</span></li>)}
+      <ul className="mb-3 space-y-2 text-sm">
+        {leagues.map((l) => (
+          <li key={l.id} className="flex items-start justify-between border-b border-border py-1.5">
+            <div>
+              <span className="font-medium">{l.name}</span> <span className="text-slate-500">({l.status})</span>
+              <div className="text-xs text-muted">
+                {groupName.get(l.officeGroupId) ?? "—"}
+                {l.stake ? ` · stake ${l.stake}` : ""}
+                {l.prizePool ? ` · ${l.prizePool}` : ""}
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                if (confirm(`Delete league "${l.name}" and all its competitions? This can't be undone.`)) {
+                  run(() => apiDelete(`/api/admin/leagues/${l.id}`));
+                }
+              }}
+              disabled={busy}
+              className="ml-2 shrink-0 rounded px-2 py-0.5 text-xs text-red-400 hover:bg-red-500/10"
+            >
+              Delete
+            </button>
+          </li>
+        ))}
         {leagues.length === 0 && <li className="text-slate-500">None yet.</li>}
       </ul>
       {!ready && <p className="text-sm text-amber-400">Add an office group and at least one organiser/admin first.</p>}
       {ready && (
         <form
-          className="grid gap-2 sm:grid-cols-[1fr_1fr_auto] sm:items-end"
+          className="grid gap-2 sm:grid-cols-2"
           onSubmit={(e) => {
             e.preventDefault();
             run(
               () => apiPost("/api/admin/leagues", {
                 name,
                 officeGroupId: officeGroupId || officeGroups[0].id,
+                stake: stake || undefined,
+                prizePool: prizePool || undefined,
                 createdBy: admins[0].id,
               }),
-              () => setName(""),
+              () => { setName(""); setStake(""); setPrizePool(""); },
             );
           }}
         >
-          <Field label="League name" value={name} onChange={(e) => setName(e.target.value)} required />
-          <Select label="Office group" value={officeGroupId} onChange={(e) => setOfficeGroupId(e.target.value)}>
+          <Field label="League name (e.g. PL, NFL)" value={name} onChange={(e) => setName(e.target.value)} required />
+          <Select label="Group / scope" value={officeGroupId} onChange={(e) => setOfficeGroupId(e.target.value)}>
             {officeGroups.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
           </Select>
-          <Button disabled={busy}>Create</Button>
+          <Field label="Stake / entry (e.g. £5)" value={stake} onChange={(e) => setStake(e.target.value)} placeholder="optional" />
+          <Field label="Prize pool (e.g. Winner takes 80%)" value={prizePool} onChange={(e) => setPrizePool(e.target.value)} placeholder="optional" />
+          <div className="sm:col-span-2"><Button disabled={busy}>Create league</Button></div>
         </form>
       )}
       <ErrorText>{error}</ErrorText>
@@ -189,9 +218,22 @@ function CompetitionCard({ competitions, leagues, sports, catalog }: { competiti
     <Card title="Competitions">
       <ul className="mb-3 space-y-1 text-sm">
         {competitions.map((c) => (
-          <li key={c.id} className="flex items-center gap-2">
-            <Link to={`/admin/competitions/${c.id}`} className="text-sky-400 hover:underline">{c.name}</Link>
-            <span className="text-slate-500">{c.formatType} · {c.status} · target {c.targetEntryCount}</span>
+          <li key={c.id} className="flex items-center justify-between gap-2 border-b border-border py-1">
+            <span className="flex items-center gap-2">
+              <Link to={`/admin/competitions/${c.id}`} className="text-sky-400 hover:underline">{c.name}</Link>
+              <span className="text-slate-500">{c.formatType} · {c.status} · target {c.targetEntryCount}</span>
+            </span>
+            <button
+              onClick={() => {
+                if (confirm(`Delete competition "${c.name}" and its participants/draw? This can't be undone.`)) {
+                  run(() => apiDelete(`/api/admin/competitions/${c.id}`));
+                }
+              }}
+              disabled={busy}
+              className="shrink-0 rounded px-2 py-0.5 text-xs text-red-400 hover:bg-red-500/10"
+            >
+              Delete
+            </button>
           </li>
         ))}
         {competitions.length === 0 && <li className="text-slate-500">None yet.</li>}

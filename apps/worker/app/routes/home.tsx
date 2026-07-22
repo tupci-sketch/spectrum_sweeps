@@ -3,7 +3,7 @@ import { apiGet } from "../api-client";
 import { Panel, StatTile, StatusPill, FormatTag } from "../components/ui";
 
 interface LeagueRow { id: string; name: string; status: string; }
-interface CompetitionRow { id: string; name: string; formatType: string; status: string; targetEntryCount: number; }
+interface CompetitionRow { id: string; name: string; formatType: string; status: string; targetEntryCount: number; drawState: string; }
 
 export async function clientLoader() {
   const [leagues, competitions] = await Promise.all([
@@ -33,20 +33,28 @@ export default function Home() {
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel title="Competitions" icon={<TrophyIcon />}>
           <ul className="space-y-2">
-            {competitions.map((c) => (
-              <li key={c.id}>
-                <Link
-                  to={`/leaderboard/${c.id}`}
-                  className="flex items-center justify-between rounded-lg border border-transparent bg-surface-2/40 px-3 py-2.5 transition hover:border-border hover:bg-surface-2"
-                >
-                  <span className="flex items-center gap-2">
-                    <span className="font-medium">{c.name}</span>
-                    <FormatTag formatType={c.formatType} />
-                  </span>
-                  <StatusPill status={c.status} />
-                </Link>
-              </li>
-            ))}
+            {competitions.map((c) => {
+              const drawing = c.drawState === "scheduled" || c.drawState === "live";
+              return (
+                <li key={c.id} className="rounded-lg border border-transparent bg-surface-2/40 px-3 py-2.5 transition hover:border-border hover:bg-surface-2">
+                  <div className="flex items-center justify-between">
+                    <Link to={`/leaderboard/${c.id}`} className="flex items-center gap-2 hover:underline">
+                      <span className="font-medium">{c.name}</span>
+                      <FormatTag formatType={c.formatType} />
+                    </Link>
+                    <StatusPill status={drawing ? c.drawState : c.status} />
+                  </div>
+                  <div className="mt-1 flex gap-3 text-xs">
+                    <Link to={`/leaderboard/${c.id}`} className="text-muted hover:text-ink hover:underline">Leaderboard</Link>
+                    {(drawing || c.drawState === "completed") && (
+                      <Link to={`/draw/${c.id}`} className="text-brand hover:underline">
+                        {c.drawState === "live" ? "● Draw room (live)" : "Draw room"}
+                      </Link>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
             {competitions.length === 0 && <li className="text-muted">No competitions yet.</li>}
           </ul>
         </Panel>
