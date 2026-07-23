@@ -225,6 +225,19 @@ export const drawLiveApi = new Hono<AppEnv>()
     const entryNumber = new Map(entries.map((e) => [e.id, e.competitorNumber]));
 
     const asn = await db.select().from(assignments).where(eq(assignments.competitionId, competitionId)).all();
+
+    // Who's up next in the committed reveal order (name only — never the team),
+    // so the draw room can announce them during the 3-2-1 countdown.
+    let upNext: string | null = null;
+    if (comp.drawState === "live" && comp.drawSeed) {
+      const plan = await revealPlan(db, competitionId, comp.drawSeed);
+      const nextPair = plan[asn.length];
+      if (nextPair) {
+        const [nu] = await db.select().from(users).where(eq(users.id, nextPair.participant.userId)).all();
+        upNext = nu?.nickname ?? "Next up";
+      }
+    }
+
     // Reveal order is assignment insertion order (each spin appends one).
     const reveals = asn.map((a) => ({
       participantId: a.participantId,
@@ -246,6 +259,7 @@ export const drawLiveApi = new Hono<AppEnv>()
       totalParticipants: parts.length,
       revealedCount: asn.length,
       complete: comp.drawState === "completed",
+      upNext,
       reveals,
       // Full pool for the spin-wheel segments.
       entries: entries.map((e) => ({ id: e.id, label: e.teamOrDriverLabel, crestUrl: e.crestUrl, competitorNumber: e.competitorNumber })),

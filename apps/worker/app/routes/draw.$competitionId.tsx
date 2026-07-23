@@ -6,19 +6,17 @@ import { Panel, StatusPill } from "../components/ui";
 import { ChatBox } from "../components/ChatBox";
 import { SpinWheel, type WheelSegment } from "../components/SpinWheel";
 import { Confetti } from "../components/Confetti";
+import { TeamCrest } from "../components/TeamCrest";
+import { sounds } from "../lib/sounds";
 
 interface Reveal { participantId: string; potEntryId: string; nickname: string; team: string; crestUrl: string | null; competitorNumber: number | null; }
 
-function Crest({ url, number, size = 24 }: { url: string | null; number: number | null; size?: number }) {
-  if (url) return <img src={url} alt="" width={size} height={size} className="inline-block object-contain align-middle" />;
-  if (number != null) return <span className="inline-grid place-items-center rounded bg-surface-2 px-1 text-xs font-bold text-gold" style={{ minWidth: size, height: size }}>{number}</span>;
-  return null;
-}
 interface DrawStateResp {
   competition: { id: string; name: string; formatType: string; drawState: string; drawScheduledAt: number | null };
   totalParticipants: number;
   revealedCount: number;
   complete: boolean;
+  upNext: string | null;
   reveals: Reveal[];
   entries: WheelSegment[];
 }
@@ -36,6 +34,7 @@ export default function DrawRoom() {
   const [wheel, setWheel] = useState<{ targetId: string | null; token: number }>({ targetId: null, token: 0 });
   const [celebrate, setCelebrate] = useState(false);
   const [spinningNow, setSpinningNow] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
   const wasComplete = useRef(false);
 
   const poll = useCallback(async () => {
@@ -49,11 +48,12 @@ export default function DrawRoom() {
         setFlash(latest);
         setSpinningNow(true); // hide the team until the wheel lands on it
         setWheel((w) => ({ targetId: latest.potEntryId, token: w.token + 1 }));
+        sounds.spinTicks(); // decelerating ticks while the wheel turns
       }
       // Fire the celebration once, ~when the final pick's wheel settles.
       if (data.complete && !wasComplete.current && prevCount.current > 0) {
         wasComplete.current = true;
-        setTimeout(() => setCelebrate(true), 4200);
+        setTimeout(() => { setCelebrate(true); sounds.fanfare(); }, 4200);
       }
       prevCount.current = data.revealedCount;
     } catch {
@@ -81,6 +81,25 @@ export default function DrawRoom() {
     } finally {
       setBusy(false);
     }
+  }
+
+  // Owner spins: 3-2-1 countdown (with beeps) then trigger the reveal.
+  async function runSpin() {
+    if (busy || countdown !== null) return;
+    sounds.unlock();
+    for (const k of [3, 2, 1]) {
+      setCountdown(k);
+      sounds.countdown(k);
+      await new Promise((r) => setTimeout(r, 850));
+    }
+    setCountdown(null);
+    sounds.go();
+    await act("/api/draw/spin");
+  }
+
+  function onLanded() {
+    setSpinningNow(false);
+    sounds.reveal();
   }
 
   return (
@@ -117,33 +136,54 @@ export default function DrawRoom() {
             {(c?.drawState === "live" || c?.drawState === "completed") && (
               <div>
                 {!state.complete && (
-                  <div className="mb-4">
+                  <div className="relative mb-4">
                     <SpinWheel
                       segments={state.entries}
                       targetId={wheel.targetId}
                       spinToken={wheel.token}
-                      onLanded={() => setSpinningNow(false)}
+                      onLanded={onLanded}
                     />
+                    {/* 3-2-1 countdown overlay */}
+                    {countdown !== null && (
+                      <div className="absolute inset-0 z-30 grid place-items-center rounded-full">
+                        <div className="grid h-40 w-40 place-items-center rounded-full bg-black/70 backdrop-blur-sm">
+                          <span key={countdown} className="animate-[spectrum-pop_0.85s_ease-out] text-7xl font-black text-gold drop-shadow-lg">
+                            {countdown}
+                          </span>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
                 <div className="mb-4 text-center">
                   <p className="text-xs uppercase tracking-wide text-muted">
-                    {state.complete ? "Draw complete" : `Pick ${state.revealedCount} of ${state.totalParticipants}`}
+                    {state.complete ? "Draw complete" : `Pick ${state.revealedCount + (countdown !== null ? 1 : 0)} of ${state.totalParticipants}`}
                   </p>
-                  {flash && !state.complete && (
+
+                  {/* During the countdown, announce who's up. */}
+                  {countdown !== null && state.upNext && (
+                    <div className="mt-2">
+                      <p className="text-sm uppercase tracking-wide text-muted">Up next</p>
+                      <p className="text-3xl font-black text-ink">{state.upNext}</p>
+                    </div>
+                  )}
+
+                  {/* During/after the spin, the entrant then their club. */}
+                  {countdown === null && flash && !state.complete && (
                     <div className="mt-2">
                       <p className="text-2xl font-extrabold text-ink">{flash.nickname}</p>
                       {spinningNow ? (
                         <p className="text-lg text-muted">is up… 🎡 <span className="animate-pulse">spinning</span></p>
                       ) : (
-                        <p className="flex items-center justify-center gap-2 text-lg text-gold">
-                          drew <Crest url={flash.crestUrl} number={flash.competitorNumber} size={28} /> {flash.team}
+                        <p className="flex items-center justify-center gap-2 text-xl font-semibold text-gold">
+                          drew <TeamCrest label={flash.team} crestUrl={flash.crestUrl} number={flash.competitorNumber} size={30} /> {flash.team}
                         </p>
                       )}
                     </div>
                   )}
                   {state.complete && <p className="mt-2 text-lg font-semibold text-gold">🏆 All allocations revealed</p>}
                 </div>
+
                 <div className="h-2 w-full overflow-hidden rounded-full bg-surface-2">
                   <div
                     className="h-full bg-brand transition-all"
@@ -154,7 +194,7 @@ export default function DrawRoom() {
             )}
 
             {isOwner && (
-              <div className="mt-5 flex justify-center gap-3">
+              <div className="mt-5 flex flex-col items-center gap-2">
                 {c?.drawState === "scheduled" && (
                   <button
                     onClick={() => act("/api/draw/start")}
@@ -165,13 +205,18 @@ export default function DrawRoom() {
                   </button>
                 )}
                 {c?.drawState === "live" && !state.complete && (
-                  <button
-                    onClick={() => act("/api/draw/spin")}
-                    disabled={busy}
-                    className="rounded-lg bg-brand px-8 py-3 text-lg font-extrabold uppercase tracking-wide text-white shadow-lg shadow-brand/30 hover:bg-brand-hi disabled:opacity-50"
-                  >
-                    {busy ? "Spinning…" : "Spin"}
-                  </button>
+                  <>
+                    {state.upNext && countdown === null && !spinningNow && (
+                      <p className="text-sm text-muted">Up next: <span className="font-semibold text-ink">{state.upNext}</span></p>
+                    )}
+                    <button
+                      onClick={runSpin}
+                      disabled={busy || countdown !== null || spinningNow}
+                      className="rounded-lg bg-brand px-10 py-3.5 text-lg font-extrabold uppercase tracking-wide text-white shadow-lg shadow-brand/30 hover:bg-brand-hi disabled:opacity-50"
+                    >
+                      {countdown !== null ? countdown : spinningNow ? "Spinning…" : "Spin"}
+                    </button>
+                  </>
                 )}
               </div>
             )}
@@ -188,8 +233,8 @@ export default function DrawRoom() {
                       <span className="grid h-6 w-6 place-items-center rounded-full bg-surface-2 text-xs text-muted">{i + 1}</span>
                       <span className="font-medium">{r.nickname}</span>
                     </span>
-                    <span className="flex items-center gap-2 text-gold">
-                      <Crest url={r.crestUrl} number={r.competitorNumber} /> {r.team}
+                    <span className="flex items-center gap-2 font-medium text-gold">
+                      <TeamCrest label={r.team} crestUrl={r.crestUrl} number={r.competitorNumber} size={24} /> {r.team}
                     </span>
                   </li>
                 ))}

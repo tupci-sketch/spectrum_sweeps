@@ -115,6 +115,10 @@ export function SpinWheel({
               >
                 {s.competitorNumber != null ? `${s.competitorNumber} · ` : ""}{truncate(s.label, maxChars)}
               </text>
+              {s.crestUrl && (() => {
+                const [ix, iy] = pointAt(am, R * 0.55);
+                return <image href={s.crestUrl} x={ix - 11} y={iy - 11} width={22} height={22} preserveAspectRatio="xMidYMid meet" />;
+              })()}
             </g>
           );
         })}
