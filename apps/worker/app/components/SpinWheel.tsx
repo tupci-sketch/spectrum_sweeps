@@ -37,27 +37,41 @@ export function SpinWheel({
   const seg = 360 / n;
   const landed = segments.find((s) => s.id === landedId) ?? null;
 
+  // The draw room re-polls state every ~1.2s, handing us a fresh `segments`
+  // array and a new `onLanded` closure on every render. Read those through refs
+  // so a routine re-render can't re-run the spin effect and clear its own
+  // landing timeout — the effect must fire ONLY when a new spin is requested,
+  // otherwise the wheel gets stuck "spinning" and never reveals or re-enables.
+  const segmentsRef = useRef(segments);
+  segmentsRef.current = segments;
+  const onLandedRef = useRef(onLanded);
+  onLandedRef.current = onLanded;
+
   useEffect(() => {
     if (spinToken === lastToken.current || !targetId) return;
     lastToken.current = spinToken;
-    const idx = segments.findIndex((s) => s.id === targetId);
+    const segs = segmentsRef.current;
+    const idx = segs.findIndex((s) => s.id === targetId);
     if (idx < 0) return;
 
     // Land the target segment's centre under the pointer (top), plus a few full
     // turns for drama. Rotation only ever increases so it always spins forward.
-    const targetCentre = idx * seg + seg / 2;
-    const base = rotation - (rotation % 360);
-    const next = base + 360 * 6 + (360 - targetCentre);
+    const count = Math.max(segs.length, 1);
+    const step = 360 / count;
+    const targetCentre = idx * step + step / 2;
     setLandedId(null);
     setSpinning(true);
-    setRotation(next);
+    setRotation((prev) => {
+      const base = prev - (prev % 360);
+      return base + 360 * 6 + (360 - targetCentre);
+    });
     const t = setTimeout(() => {
       setSpinning(false);
-      setLandedId(segments[idx].id);
-      onLanded?.(segments[idx]);
+      setLandedId(segs[idx].id);
+      onLandedRef.current?.(segs[idx]);
     }, 4200);
     return () => clearTimeout(t);
-  }, [spinToken, targetId, segments, seg, rotation, onLanded]);
+  }, [spinToken, targetId]);
 
   // Label sizing shrinks as the field grows so 20+ names still fit the rim.
   const fontSize = n > 24 ? 7 : n > 18 ? 8.5 : n > 12 ? 10 : 12;
