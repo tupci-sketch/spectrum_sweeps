@@ -5,6 +5,7 @@ import { useAuth } from "../auth";
 import { Panel, StatusPill } from "../components/ui";
 import { ChatBox } from "../components/ChatBox";
 import { SpinWheel, type WheelSegment } from "../components/SpinWheel";
+import { Confetti } from "../components/Confetti";
 
 interface Reveal { participantId: string; potEntryId: string; nickname: string; team: string; crestUrl: string | null; competitorNumber: number | null; }
 
@@ -33,6 +34,9 @@ export default function DrawRoom() {
   // Spin-wheel: bump the token + set the target whenever a new pick lands, so
   // every watcher's wheel spins to the same team at ~the same moment.
   const [wheel, setWheel] = useState<{ targetId: string | null; token: number }>({ targetId: null, token: 0 });
+  const [celebrate, setCelebrate] = useState(false);
+  const [spinningNow, setSpinningNow] = useState(false);
+  const wasComplete = useRef(false);
 
   const poll = useCallback(async () => {
     try {
@@ -43,7 +47,13 @@ export default function DrawRoom() {
       if (data.revealedCount > prevCount.current && data.reveals.length) {
         const latest = data.reveals[data.reveals.length - 1];
         setFlash(latest);
+        setSpinningNow(true); // hide the team until the wheel lands on it
         setWheel((w) => ({ targetId: latest.potEntryId, token: w.token + 1 }));
+      }
+      // Fire the celebration once, ~when the final pick's wheel settles.
+      if (data.complete && !wasComplete.current && prevCount.current > 0) {
+        wasComplete.current = true;
+        setTimeout(() => setCelebrate(true), 4200);
       }
       prevCount.current = data.revealedCount;
     } catch {
@@ -75,10 +85,11 @@ export default function DrawRoom() {
 
   return (
     <div className="mx-auto max-w-3xl px-5 py-8 lg:px-8">
+      <Confetti fire={celebrate} />
       <header className="mb-6 flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2 text-sm text-muted">
-            <Link to="/" className="hover:text-ink">Leagues</Link><span>/</span><span>Draw room</span>
+            <Link to="/" className="hover:text-ink">Sweepstakes</Link><span>/</span><span>Draw room</span>
           </div>
           <h1 className="mt-1 text-3xl font-extrabold tracking-tight">{c?.name ?? "Draw"}</h1>
         </div>
@@ -107,7 +118,12 @@ export default function DrawRoom() {
               <div>
                 {!state.complete && (
                   <div className="mb-4">
-                    <SpinWheel segments={state.entries} targetId={wheel.targetId} spinToken={wheel.token} />
+                    <SpinWheel
+                      segments={state.entries}
+                      targetId={wheel.targetId}
+                      spinToken={wheel.token}
+                      onLanded={() => setSpinningNow(false)}
+                    />
                   </div>
                 )}
                 <div className="mb-4 text-center">
@@ -117,9 +133,13 @@ export default function DrawRoom() {
                   {flash && !state.complete && (
                     <div className="mt-2">
                       <p className="text-2xl font-extrabold text-ink">{flash.nickname}</p>
-                      <p className="flex items-center justify-center gap-2 text-lg text-gold">
-                        drew <Crest url={flash.crestUrl} number={flash.competitorNumber} size={28} /> {flash.team}
-                      </p>
+                      {spinningNow ? (
+                        <p className="text-lg text-muted">is up… 🎡 <span className="animate-pulse">spinning</span></p>
+                      ) : (
+                        <p className="flex items-center justify-center gap-2 text-lg text-gold">
+                          drew <Crest url={flash.crestUrl} number={flash.competitorNumber} size={28} /> {flash.team}
+                        </p>
+                      )}
                     </div>
                   )}
                   {state.complete && <p className="mt-2 text-lg font-semibold text-gold">🏆 All allocations revealed</p>}

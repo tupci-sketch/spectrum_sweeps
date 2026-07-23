@@ -51,7 +51,7 @@ export default function Audit() {
     <div className="mx-auto max-w-3xl px-5 py-8 lg:px-8">
       <header className="mb-6">
         <div className="flex items-center gap-2 text-sm text-muted">
-          <Link to="/" className="hover:text-ink">Leagues</Link><span>/</span><span>Draw transparency</span>
+          <Link to="/" className="hover:text-ink">Sweepstakes</Link><span>/</span><span>Draw transparency</span>
         </div>
         <h1 className="mt-1 text-3xl font-extrabold tracking-tight">{data.competition.name}</h1>
         <p className="text-muted">Every draw is recorded and independently verifiable.</p>

@@ -2,10 +2,23 @@ import { useEffect, useRef, useState } from "react";
 
 export interface WheelSegment { id: string; label: string; crestUrl: string | null; competitorNumber: number | null; }
 
-// Spectrum-styled wheel of fortune. Tell it to spin to a segment (by giving a
-// new `spinToken` + `targetId`) and it rotates several turns before landing the
-// target under the top pointer, then shows the result in the hub.
-const COLORS = ["#d81e27", "#e5b23a", "#1f6feb", "#2ea043", "#8957e5", "#e36209", "#0891b2", "#c2410c"];
+// Spectrum wheel of fortune, drawn in SVG so every segment carries its real
+// team/driver name. Give it a new `spinToken` + `targetId` and it rotates a few
+// turns before landing that segment under the top pointer, then celebrates it.
+const COLORS = ["#d81e27", "#e5b23a", "#1f6feb", "#2ea043", "#8957e5", "#e36209", "#0891b2", "#be123c", "#7c3aed", "#0d9488"];
+const SIZE = 340;
+const CX = SIZE / 2;
+const CY = SIZE / 2;
+const R = SIZE / 2 - 6;
+
+function pointAt(angleDeg: number, radius: number): [number, number] {
+  const rad = (angleDeg * Math.PI) / 180; // 0° = top, clockwise
+  return [CX + radius * Math.sin(rad), CY - radius * Math.cos(rad)];
+}
+
+function truncate(s: string, n: number) {
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
 
 export function SpinWheel({
   segments, targetId, spinToken, onLanded,
@@ -17,11 +30,12 @@ export function SpinWheel({
 }) {
   const [rotation, setRotation] = useState(0);
   const [spinning, setSpinning] = useState(false);
-  const [landed, setLanded] = useState<WheelSegment | null>(null);
+  const [landedId, setLandedId] = useState<string | null>(null);
   const lastToken = useRef(0);
 
   const n = Math.max(segments.length, 1);
   const seg = 360 / n;
+  const landed = segments.find((s) => s.id === landedId) ?? null;
 
   useEffect(() => {
     if (spinToken === lastToken.current || !targetId) return;
@@ -29,53 +43,98 @@ export function SpinWheel({
     const idx = segments.findIndex((s) => s.id === targetId);
     if (idx < 0) return;
 
-    // Land the target segment's centre under the pointer (top = 0deg), plus 5
-    // full turns for drama. Rotation only ever increases.
+    // Land the target segment's centre under the pointer (top), plus a few full
+    // turns for drama. Rotation only ever increases so it always spins forward.
     const targetCentre = idx * seg + seg / 2;
     const base = rotation - (rotation % 360);
-    const next = base + 360 * 5 + (360 - targetCentre);
-    setLanded(null);
+    const next = base + 360 * 6 + (360 - targetCentre);
+    setLandedId(null);
     setSpinning(true);
     setRotation(next);
     const t = setTimeout(() => {
       setSpinning(false);
-      const s = segments[idx];
-      setLanded(s);
-      onLanded?.(s);
-    }, 3600);
+      setLandedId(segments[idx].id);
+      onLanded?.(segments[idx]);
+    }, 4200);
     return () => clearTimeout(t);
   }, [spinToken, targetId, segments, seg, rotation, onLanded]);
 
-  const gradient = `conic-gradient(${segments
-    .map((_, i) => `${COLORS[i % COLORS.length]} ${i * seg}deg ${(i + 1) * seg}deg`)
-    .join(", ")})`;
+  // Label sizing shrinks as the field grows so 20+ names still fit the rim.
+  const fontSize = n > 24 ? 7 : n > 18 ? 8.5 : n > 12 ? 10 : 12;
+  const maxChars = n > 18 ? 10 : n > 12 ? 13 : 16;
+  const rLabel = R - 12;
 
   return (
-    <div className="relative mx-auto" style={{ width: 300, height: 300 }}>
+    <div className="relative mx-auto" style={{ width: SIZE, height: SIZE, maxWidth: "100%" }}>
       {/* Pointer */}
-      <div className="absolute left-1/2 top-[-6px] z-20 -translate-x-1/2" style={{ width: 0, height: 0, borderLeft: "12px solid transparent", borderRight: "12px solid transparent", borderTop: "20px solid #e5b23a" }} />
-      {/* Wheel */}
       <div
-        className="h-full w-full rounded-full border-4 border-gold/70 shadow-2xl"
-        style={{
-          background: gradient,
-          transform: `rotate(${rotation}deg)`,
-          transition: spinning ? "transform 3.5s cubic-bezier(0.17, 0.67, 0.12, 0.99)" : "none",
-        }}
+        className="absolute left-1/2 top-[-4px] z-20 -translate-x-1/2 drop-shadow"
+        style={{ width: 0, height: 0, borderLeft: "13px solid transparent", borderRight: "13px solid transparent", borderTop: "24px solid #e5b23a" }}
       />
+      <svg
+        viewBox={`0 0 ${SIZE} ${SIZE}`}
+        className="h-full w-full"
+        style={{
+          transform: `rotate(${rotation}deg)`,
+          transition: spinning ? "transform 4.1s cubic-bezier(0.16, 0.84, 0.24, 1)" : "none",
+          filter: spinning ? "drop-shadow(0 0 18px rgba(229,178,58,0.35))" : "drop-shadow(0 6px 20px rgba(0,0,0,0.5))",
+        }}
+      >
+        <circle cx={CX} cy={CY} r={R + 4} fill="#0b0b10" stroke="rgba(229,178,58,0.7)" strokeWidth={4} />
+        {segments.map((s, i) => {
+          const a0 = i * seg;
+          const a1 = (i + 1) * seg;
+          const [x0, y0] = pointAt(a0, R);
+          const [x1, y1] = pointAt(a1, R);
+          const large = seg > 180 ? 1 : 0;
+          const am = a0 + seg / 2;
+          const [lx, ly] = pointAt(am, rLabel);
+          const isWinner = s.id === landedId;
+          // Read outward along the radius; flip on the left half so it stays upright.
+          const flip = am > 180;
+          const rot = flip ? am + 90 : am - 90;
+          return (
+            <g key={s.id}>
+              <path
+                d={`M ${CX} ${CY} L ${x0} ${y0} A ${R} ${R} 0 ${large} 1 ${x1} ${y1} Z`}
+                fill={COLORS[i % COLORS.length]}
+                stroke={isWinner ? "#ffffff" : "rgba(0,0,0,0.25)"}
+                strokeWidth={isWinner ? 3 : 1}
+                style={{ filter: landedId && !isWinner ? "brightness(0.5)" : "none", transition: "filter 0.4s, stroke 0.2s" }}
+              />
+              <text
+                x={lx}
+                y={ly}
+                fill="#fff"
+                fontSize={fontSize}
+                fontWeight={isWinner ? 800 : 600}
+                textAnchor={flip ? "start" : "end"}
+                dominantBaseline="central"
+                transform={`rotate(${rot} ${lx} ${ly})`}
+                style={{ paintOrder: "stroke", stroke: "rgba(0,0,0,0.35)", strokeWidth: 0.6 }}
+              >
+                {s.competitorNumber != null ? `${s.competitorNumber} · ` : ""}{truncate(s.label, maxChars)}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+
       {/* Hub */}
-      <div className="absolute left-1/2 top-1/2 z-10 grid h-24 w-24 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-4 border-gold/70 bg-surface text-center">
+      <div className="pointer-events-none absolute left-1/2 top-1/2 z-10 grid h-24 w-24 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border-4 border-gold/70 bg-surface text-center shadow-inner">
         {landed ? (
           <div className="px-1">
             {landed.crestUrl ? (
-              <img src={landed.crestUrl} alt="" width={28} height={28} className="mx-auto object-contain" />
+              <img src={landed.crestUrl} alt="" width={30} height={30} className="mx-auto object-contain" />
             ) : landed.competitorNumber != null ? (
-              <span className="text-2xl font-extrabold text-gold">{landed.competitorNumber}</span>
-            ) : null}
-            <p className="mt-0.5 text-[10px] font-semibold leading-tight text-ink">{landed.label}</p>
+              <span className="block text-2xl font-extrabold text-gold">{landed.competitorNumber}</span>
+            ) : (
+              <span className="block text-lg">🎉</span>
+            )}
+            <p className="mt-0.5 text-[10px] font-bold leading-tight text-ink">{truncate(landed.label, 14)}</p>
           </div>
         ) : (
-          <span className="text-2xl font-extrabold text-brand">S</span>
+          <span className={`text-2xl font-extrabold text-brand ${spinning ? "animate-pulse" : ""}`}>S</span>
         )}
       </div>
     </div>
