@@ -10,7 +10,13 @@ export type UserStatus = (typeof userStatusValues)[number];
 
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
-  email: text("email").notNull().unique(),
+  // Real name (e.g. "Corey Topping"). It's a company tool, so full names are
+  // collected; the app shows a first name + last initial derived from this.
+  fullName: text("full_name"),
+  // Optional — signup is invite-code only, so email is no longer required.
+  email: text("email"),
+  // Computed display handle: first name, plus a last initial only when another
+  // account shares that first name. Kept in sync so all read paths stay simple.
   nickname: text("nickname").notNull(),
   displayName: text("display_name").notNull(),
   role: text("role", { enum: userRoleValues }).notNull().default("participant"),

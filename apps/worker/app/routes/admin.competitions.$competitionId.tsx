@@ -7,7 +7,7 @@ import { useAuth } from "../auth";
 
 interface Competition { id: string; name: string; formatType: string; status: string; targetEntryCount: number; joinCode: string; drawState: string; drawScheduledAt: number | null; stake: string | null; prizePool: string | null; }
 interface Participant { id: string; userId: string; paid: boolean; entryStatus: string; }
-interface User { id: string; nickname: string; email: string; role: string; }
+interface User { id: string; nickname: string; fullName?: string | null; role: string; }
 interface Entry { id: string; teamOrDriverLabel: string; isDrawn: boolean; drawPotId: string; }
 interface Pot { id: string; name: string; }
 interface Assignment { id: string; participantId: string; potEntryId: string; }
@@ -119,8 +119,7 @@ function ParticipantsCard({
   drawn: boolean;
 }) {
   const { run, error, busy } = useSubmit();
-  const [nickname, setNickname] = useState("");
-  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
   const [existingId, setExistingId] = useState("");
   const [mode, setMode] = useState<"existing" | "new">(addableUsers.length > 0 ? "existing" : "new");
   const remaining = competition.targetEntryCount - participants.length;
@@ -192,13 +191,12 @@ function ParticipantsCard({
               onSubmit={(e) => {
                 e.preventDefault();
                 run(async () => {
-                  const user = await apiPost<User>("/api/admin/users", { nickname, email, role: "participant" });
+                  const user = await apiPost<User>("/api/admin/users", { fullName, role: "participant" });
                   await apiPost("/api/admin/participants", { competitionId: competition.id, userId: user.id });
-                }, () => { setNickname(""); setEmail(""); });
+                }, () => setFullName(""));
               }}
             >
-              <Field label="Nickname" value={nickname} onChange={(e) => setNickname(e.target.value)} required disabled={!actor} />
-              <Field label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required disabled={!actor} />
+              <Field label="Full name" value={fullName} onChange={(e) => setFullName(e.target.value)} required minLength={2} disabled={!actor} placeholder="e.g. Priya Shah" />
               <Button disabled={busy || !actor}>Add participant</Button>
             </form>
           )}

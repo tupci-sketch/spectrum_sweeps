@@ -7,7 +7,7 @@ import { useAuth } from "../auth";
 import { AuthGate } from "../components/AuthGate";
 
 interface OfficeGroup { id: string; name: string; }
-interface User { id: string; nickname: string; email: string; role: string; }
+interface User { id: string; nickname: string; fullName?: string | null; role: string; }
 interface InviteCode { id: string; code: string; purpose: string; role: string; grantLevel: number; accountType: string; note: string | null; redeemedByUserId: string | null; }
 interface CatalogEvent { id: string; name: string; formatType: string; sportLabel: string; season: string; teamCount: number; }
 interface Sweepstake { id: string; name: string; formatType: string; status: string; drawState: string; targetEntryCount: number; stake: string | null; prizePool: string | null; groupName: string | null; }
@@ -267,13 +267,18 @@ function OfficeGroupCard({ officeGroups }: { officeGroups: OfficeGroup[] }) {
 
 function UserCard({ users, officeGroups }: { users: User[]; officeGroups: OfficeGroup[] }) {
   const { run, error, busy } = useSubmit();
-  const [nickname, setNickname] = useState("");
-  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
   const [role, setRole] = useState("participant");
   return (
     <Card title="People">
       <ul className="mb-3 space-y-1 text-sm text-slate-300 max-h-32 overflow-auto">
-        {users.map((u) => <li key={u.id}>{u.nickname} <span className="text-slate-500">({u.role})</span></li>)}
+        {users.map((u) => (
+          <li key={u.id}>
+            {u.nickname}
+            {u.fullName && u.fullName !== u.nickname && <span className="text-slate-500"> · {u.fullName}</span>}
+            <span className="text-slate-500"> ({u.role})</span>
+          </li>
+        ))}
         {users.length === 0 && <li className="text-slate-500">None yet.</li>}
       </ul>
       <form
@@ -281,13 +286,12 @@ function UserCard({ users, officeGroups }: { users: User[]; officeGroups: Office
         onSubmit={(e) => {
           e.preventDefault();
           run(
-            () => apiPost("/api/admin/users", { nickname, email, role, officeGroupId: officeGroups[0]?.id }),
-            () => { setNickname(""); setEmail(""); },
+            () => apiPost("/api/admin/users", { fullName, role, officeGroupId: officeGroups[0]?.id }),
+            () => setFullName(""),
           );
         }}
       >
-        <Field label="Nickname" value={nickname} onChange={(e) => setNickname(e.target.value)} required />
-        <Field label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+        <Field label="Full name" value={fullName} onChange={(e) => setFullName(e.target.value)} required minLength={2} placeholder="e.g. Priya Shah" />
         <Select label="Role" value={role} onChange={(e) => setRole(e.target.value)}>
           <option value="participant">Participant</option>
           <option value="organiser">Organiser</option>

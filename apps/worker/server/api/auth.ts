@@ -7,16 +7,16 @@ import type { AppEnv, AuthUser } from "./bindings";
 import { getDb } from "./db";
 import { hashPassword, verifyPassword } from "../auth/password";
 import { createSession, destroySession } from "../auth/session";
+import { firstNameOf, recomputeDisplayNames } from "./display-names";
 
 const registerSchema = z.object({
-  nickname: z.string().min(2).max(40),
-  email: z.string().email(),
+  fullName: z.string().min(2).max(80),
   password: z.string().min(8).max(200),
   code: z.string().optional(),
 });
 
 const loginSchema = z.object({
-  email: z.string().email(),
+  fullName: z.string().min(1),
   password: z.string(),
 });
 
@@ -33,9 +33,6 @@ export const authApi = new Hono<AppEnv>()
 
     const [{ value: userCount }] = await db.select({ value: count() }).from(users).all();
     const isFirstAccount = userCount === 0;
-
-    const [emailTaken] = await db.select().from(users).where(eq(users.email, body.email)).all();
-    if (emailTaken) return c.json({ error: "an account with that email already exists" }, 409);
 
     let role = "participant";
     let level = 1;
@@ -66,41 +63,54 @@ export const authApi = new Hono<AppEnv>()
       redeemCodeId = code.id;
     }
 
-    const user = {
-      id: newId("user"),
-      email: body.email,
-      nickname: body.nickname,
-      displayName: body.nickname,
+    const first = firstNameOf(body.fullName);
+    const userId = newId("user");
+    await db.insert(users).values({
+      id: userId,
+      fullName: body.fullName.trim(),
+      email: null,
+      nickname: first,
+      displayName: first,
       role: role as AuthUser["role"],
       level,
       accountType,
       officeGroupId,
       passwordHash: await hashPassword(body.password),
       status: "active" as const,
-    };
-    await db.insert(users).values(user).run();
+    }).run();
 
     if (redeemCodeId) {
       await db
         .update(inviteCodes)
-        .set({ redeemedByUserId: user.id, redeemedAt: new Date() })
+        .set({ redeemedByUserId: userId, redeemedAt: new Date() })
         .where(eq(inviteCodes.id, redeemCodeId))
         .run();
     }
 
-    const token = await createSession(db, user.id);
-    return c.json({ token, user: safeUser(user as AuthUser) }, 201);
+    // Add last initials where first names now collide, then return the fresh row.
+    await recomputeDisplayNames(db);
+    const [user] = await db.select().from(users).where(eq(users.id, userId)).all();
+
+    const token = await createSession(db, userId);
+    return c.json({ token, user: safeUser(user) }, 201);
   })
   .post("/login", async (c) => {
     const body = loginSchema.parse(await c.req.json());
     const db = getDb(c.env);
-    const [user] = await db.select().from(users).where(eq(users.email, body.email)).all();
-    if (!user || !user.passwordHash || !(await verifyPassword(body.password, user.passwordHash))) {
-      return c.json({ error: "incorrect email or password" }, 401);
+    // No email login — match on full name (or the derived display handle), and
+    // let the password disambiguate if two people share a name.
+    const name = body.fullName.trim().toLowerCase();
+    const candidates = (await db.select().from(users).all()).filter(
+      (u) => (u.fullName?.toLowerCase() === name) || u.nickname.toLowerCase() === name,
+    );
+    let matched: (typeof candidates)[number] | undefined;
+    for (const u of candidates) {
+      if (u.passwordHash && (await verifyPassword(body.password, u.passwordHash))) { matched = u; break; }
     }
-    if (user.status === "disabled") return c.json({ error: "account disabled" }, 403);
-    const token = await createSession(db, user.id);
-    return c.json({ token, user: safeUser(user) });
+    if (!matched) return c.json({ error: "incorrect name or password" }, 401);
+    if (matched.status === "disabled") return c.json({ error: "account disabled" }, 403);
+    const token = await createSession(db, matched.id);
+    return c.json({ token, user: safeUser(matched) });
   })
   .post("/logout", async (c) => {
     const header = c.req.header("Authorization");

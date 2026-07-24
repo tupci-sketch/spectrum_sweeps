@@ -10,8 +10,7 @@ export default function Login() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [hasOwner, setHasOwner] = useState<boolean | null>(null);
-  const [nickname, setNickname] = useState("");
-  const [email, setEmail] = useState("");
+  const [fullName, setFullName] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -39,9 +38,9 @@ export default function Login() {
     setError(null);
     try {
       if (mode === "login") {
-        await login(email, password);
+        await login(fullName, password);
       } else {
-        await register({ nickname, email, password, code: isFirstAccount ? undefined : code });
+        await register({ fullName, password, code: isFirstAccount ? undefined : code });
       }
       navigate("/admin");
     } catch (err) {
@@ -64,10 +63,18 @@ export default function Login() {
         <h1 className="text-xl font-bold">{mode === "login" ? "Log in" : "Create your account"}</h1>
 
         <form className="mt-4 space-y-3" onSubmit={submit}>
+          <Field
+            label="Full name"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            required
+            minLength={mode === "register" ? 2 : undefined}
+            placeholder="e.g. Corey Topping"
+            autoComplete="name"
+          />
           {mode === "register" && (
-            <Field label="Nickname" value={nickname} onChange={(e) => setNickname(e.target.value)} required minLength={2} />
+            <p className="-mt-1 text-xs text-muted">Shown to others as your first name (plus a last initial if someone shares it).</p>
           )}
-          <Field label="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
           <Field label="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={mode === "register" ? 8 : undefined} />
           {mode === "register" && !isFirstAccount && (
             <Field label="Invite code" value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} required placeholder="SPCT-XXXXXX" />

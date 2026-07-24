@@ -3,9 +3,9 @@ import { API_BASE, apiPost, clearToken, getToken, setToken } from "./api-client"
 
 export interface Me {
   id: string;
+  fullName?: string | null;
   nickname: string;
   displayName: string;
-  email?: string;
   role: string;
   level: number;
   accountType: string;
@@ -16,8 +16,8 @@ export interface Me {
 interface AuthState {
   user: Me | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  register: (input: { nickname: string; email: string; password: string; code?: string }) => Promise<void>;
+  login: (fullName: string, password: string) => Promise<void>;
+  register: (input: { fullName: string; password: string; code?: string }) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -48,13 +48,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, []);
 
-  async function login(email: string, password: string) {
-    const data = await apiPost<{ token: string; user: Me }>("/api/auth/login", { email, password });
+  async function login(fullName: string, password: string) {
+    const data = await apiPost<{ token: string; user: Me }>("/api/auth/login", { fullName, password });
     setToken(data.token);
     setUser(data.user);
   }
 
-  async function register(input: { nickname: string; email: string; password: string; code?: string }) {
+  async function register(input: { fullName: string; password: string; code?: string }) {
     const data = await apiPost<{ token: string; user: Me }>("/api/auth/register", input);
     setToken(data.token);
     setUser(data.user);
